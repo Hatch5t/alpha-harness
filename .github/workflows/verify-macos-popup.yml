@@ -1,0 +1,113 @@
+name: Verify macOS verification popup fix
+
+on:
+  push:
+    branches: [test/macos-verification-wry-0.57.1]
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      ALPHA_HARNESS_VERSION: "2026.10.24.1"
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      TARGET: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7
+        id: uv
+        with:
+          version: "0.12.18"
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+        with:
+          package_json_file: desktop/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version-file: frontend/.node-version
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+      - name: Install the project's Rust toolchain
+        working-directory: desktop
+        run: |
+          rustup toolchain install
+          rustup target add "$TARGET"
+          rustc --version
+      - name: Verify the locked webview dependency
+        working-directory: desktop/src-tauri
+        run: |
+          cargo metadata --locked --format-version 1 > "$RUNNER_TEMP/metadata.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads((Path(os.environ['RUNNER_TEMP']) / 'metadata.json').read_text())
+          versions = [p['version'] for p in data['packages'] if p['name'] == 'wry']
+          assert versions == ['0.57.1'], versions
+          print('Locked Wry version:', versions[0])
+          PY
+          cargo tree --locked -i wry
+      - name: Reproduce the shared-controller bug and verify the fixed lifecycle
+        working-directory: desktop
+        run: |
+          mkdir -p "$RUNNER_TEMP/popup-regression"
+          curl --fail --silent --show-error --location \
+            https://raw.githubusercontent.com/tauri-apps/wry/a4acf9e06fe150442730dc205715b81a0b63b5c5/examples/shared_config_child.rs \
+            --output "$RUNNER_TEMP/popup-regression/main.rs"
+          python3 - <<'PY'
+          import os, subprocess
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'popup-regression'
+          target = root / 'target'
+          source = (root / 'main.rs').read_text()
+          for version in ('0.57.0', '0.57.1'):
+              crate = root / version
+              (crate / 'src').mkdir(parents=True)
+              (crate / 'src' / 'main.rs').write_text(source)
+              (crate / 'Cargo.toml').write_text(
+                  '[package]\nname = "popup-regression"\nversion = "0.0.0"\nedition = "2024"\n'
+                  '[dependencies]\nwry = "=' + version + '"\ntao = "=0.37.1"\nobjc2 = "=0.6.4"\n'
+              )
+              subprocess.run([
+                  'cargo', 'build', '--release', '--manifest-path', str(crate / 'Cargo.toml'),
+                  '--target-dir', str(target),
+              ], check=True)
+              result = subprocess.run([str(target / 'release' / 'popup-regression')],
+                                      capture_output=True, text=True, timeout=30)
+              log = result.stdout + result.stderr
+              (root / (version + '.log')).write_text(log)
+              print('Wry', version, 'exit:', result.returncode, flush=True)
+              print(log, flush=True)
+              if version == '0.57.0':
+                  assert result.returncode not in (0, 2), 'Old Wry did not reproduce the controller failure'
+              else:
+                  assert result.returncode == 0 and 'PASS:' in log, 'Fixed Wry failed the popup lifecycle'
+          PY
+      - name: Bundle the pinned uv sidecar
+        env:
+          UV_PATH: ${{ steps.uv.outputs.uv-path }}
+        run: |
+          mkdir -p desktop/src-tauri/binaries
+          cp "$UV_PATH" "desktop/src-tauri/binaries/alpha-harness-uv-$TARGET"
+      - name: Build the patched Apple Silicon desktop app
+        run: |
+          printf '{"productName":"AlphaHarness","version":"2026.10.24","bundle":{"macOS":{"minimumSystemVersion":"11.0"}}}\n' > "$RUNNER_TEMP/version.json"
+          pnpm --dir desktop install --frozen-lockfile
+          pnpm --dir desktop exec tauri build --target "$TARGET" --bundles app,dmg \
+            --config "$RUNNER_TEMP/version.json" -- --locked
+          cp desktop/src-tauri/target/$TARGET/release/bundle/dmg/*.dmg AlphaHarness-macOS-arm64-wry-0.57.1.dmg
+          cp desktop/src-tauri/Cargo.lock Patched-Cargo.lock
+          shasum -a 256 AlphaHarness-macOS-arm64-wry-0.57.1.dmg > SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: macos-verification-fix
+          path: |
+            AlphaHarness-macOS-arm64-wry-0.57.1.dmg
+            Patched-Cargo.lock
+            SHA256SUMS
+            ${{ runner.temp }}/popup-regression/*.log
+          if-no-files-found: warn
