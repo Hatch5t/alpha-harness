@@ -10,6 +10,7 @@ import {
   SparklesIcon,
   TriangleIcon,
   TrophyIcon,
+  CalendarRangeIcon,
   WrenchIcon,
 } from 'lucide-react'
 
@@ -106,6 +107,12 @@ export const NAV = [
     group: 'BRAIN',
     label: 'Competitions',
     icon: TrophyIcon,
+  },
+  {
+    to: '/campaign',
+    group: 'BRAIN',
+    label: 'Q4 Campaign',
+    icon: CalendarRangeIcon,
   },
   {
     to: '/pyramids',
