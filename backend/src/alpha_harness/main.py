@@ -28,8 +28,8 @@ from . import updates
 from .api import (
     alphas,
     auth,
-    catalog,
     campaign,
+    catalog,
     chat,
     competitions,
     ga,
