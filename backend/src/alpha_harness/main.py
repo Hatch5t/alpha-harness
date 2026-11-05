@@ -29,6 +29,7 @@ from .api import (
     alphas,
     auth,
     catalog,
+    campaign,
     chat,
     competitions,
     ga,
@@ -169,6 +170,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(catalog.router)
+    app.include_router(campaign.router)
     app.include_router(sims.router)
     app.include_router(alphas.router)
     app.include_router(template_lab.router)
