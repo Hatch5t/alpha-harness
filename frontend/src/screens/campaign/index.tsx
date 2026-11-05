@@ -64,7 +64,8 @@ interface Unused {
   qualificationNote: string
 }
 
-const fmtPct = (value: number | null) => value === null ? '—' : `${Math.round(value * 100)}%`
+const fmtPct = (value: number | null) =>
+  value === null ? '—' : `${Math.round(value * 100)}%`
 
 export function CampaignScreen() {
   const campaign = useQuery({
@@ -81,16 +82,18 @@ export function CampaignScreen() {
   const available = (scopes.data ?? [])
     .filter((s) => s.instrument_type === 'EQUITY' && s.fields > 0)
     .sort((a, b) => b.fields - a.fields)
-  const focus = available.find((s) => s.region === 'GLB' && s.delay === 1)
-    ?? available.find((s) => s.region === 'USA' && s.delay === 1)
-    ?? available[0]
+  const focus =
+    available.find((s) => s.region === 'GLB' && s.delay === 1) ??
+    available.find((s) => s.region === 'USA' && s.delay === 1) ??
+    available[0]
 
   const unused = useQuery({
     queryKey: ['campaign', 'unused-fields', focus?.region, focus?.delay, focus?.universe],
     enabled: focus !== undefined,
-    queryFn: () => http.get<Unused>(
-      `/api/campaign/unused-fields?region=${encodeURIComponent(focus!.region)}&delay=${focus!.delay}&universe=${encodeURIComponent(focus!.universe)}&limit=30`
-    ),
+    queryFn: () =>
+      http.get<Unused>(
+        `/api/campaign/unused-fields?region=${encodeURIComponent(focus!.region)}&delay=${focus!.delay}&universe=${encodeURIComponent(focus!.universe)}&limit=30`,
+      ),
   })
 
   const result = campaign.data
@@ -102,15 +105,33 @@ export function CampaignScreen() {
         Research priorities based on the official BRAIN quarterly counts, synced catalog
         and pyramid multipliers. These are planning aids, not submission guarantees.
       </p>
-      {campaign.isError && <ErrorNotice error={campaign.error} title="Campaign metrics unavailable" />}
+      {campaign.isError && (
+        <ErrorNotice error={campaign.error} title="Campaign metrics unavailable" />
+      )}
       {result && (
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
-              { label: 'Quarterly signals', value: String(result.submittedSignals), hint: `${result.signalsToExpert} more toward Expert count` },
-              { label: 'Completed pyramids', value: String(result.completedPyramids), hint: `${result.pyramidsToExpert} more toward Expert count` },
-              { label: 'Quarter', value: result.quarter, hint: result.active ? 'Active campaign' : 'Outside Q4 2026' },
-              { label: 'Genius performance', value: 'Check BRAIN', hint: 'Not inferred from local Sharpe' },
+              {
+                label: 'Quarterly signals',
+                value: String(result.submittedSignals),
+                hint: `${result.signalsToExpert} more toward Expert count`,
+              },
+              {
+                label: 'Completed pyramids',
+                value: String(result.completedPyramids),
+                hint: `${result.pyramidsToExpert} more toward Expert count`,
+              },
+              {
+                label: 'Quarter',
+                value: result.quarter,
+                hint: result.active ? 'Active campaign' : 'Outside Q4 2026',
+              },
+              {
+                label: 'Genius performance',
+                value: 'Check BRAIN',
+                hint: 'Not inferred from local Sharpe',
+              },
             ].map((entry) => (
               <Panel key={entry.label}>
                 <div className="flex flex-col gap-2">
@@ -125,7 +146,10 @@ export function CampaignScreen() {
             <div className="flex flex-col gap-3">
               <h2 className="text-title font-semibold">Upcoming Q4 milestones</h2>
               {result.milestones.filter((m) => m.upcoming).map((m) => (
-                <div key={m.date} className="flex justify-between gap-3 border-b border-hairline pb-2 text-body">
+                <div
+                  key={m.date}
+                  className="flex justify-between gap-3 border-b border-hairline pb-2 text-body"
+                >
                   <span className="text-ink">{m.label}</span>
                   <span className="num whitespace-nowrap text-ink-muted">{m.date}</span>
                 </div>
@@ -146,11 +170,19 @@ export function CampaignScreen() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-body-compact">
                   <thead className="border-b border-hairline text-ink-subtle">
-                    <tr><th className="p-2">Category</th><th className="p-2">Scope</th><th className="p-2">Multiplier</th><th className="p-2">Progress</th></tr>
+                    <tr>
+                      <th className="p-2">Category</th>
+                      <th className="p-2">Scope</th>
+                      <th className="p-2">Multiplier</th>
+                      <th className="p-2">Progress</th>
+                    </tr>
                   </thead>
                   <tbody>
                     {result.pyramidCandidates.slice(0, 12).map((p) => (
-                      <tr key={`${p.categoryId}:${p.region}:${p.delay}`} className="border-b border-hairline-subtle text-ink-muted">
+                      <tr
+                        key={`${p.categoryId}:${p.region}:${p.delay}`}
+                        className="border-b border-hairline-subtle text-ink-muted"
+                      >
                         <td className="p-2">{p.category}</td>
                         <td className="num p-2">{p.region}/D{p.delay}</td>
                         <td className="num p-2">×{p.multiplier.toFixed(1)}</td>
@@ -160,7 +192,9 @@ export function CampaignScreen() {
                   </tbody>
                 </table>
               </div>
-              {result.pyramidCandidates.length === 0 && <p className="text-ink-subtle">No incomplete synced pyramids were returned.</p>}
+              {result.pyramidCandidates.length === 0 && (
+                <p className="text-ink-subtle">No incomplete synced pyramids were returned.</p>
+              )}
               <Link to="/pyramids" className="text-body text-primary">Open pyramid matrix</Link>
             </div>
           </Panel>
@@ -183,15 +217,25 @@ export function CampaignScreen() {
           {unused.isError && <ErrorNotice error={unused.error} title="Field search unavailable" />}
           {unused.data && (
             <>
-              <span className="text-body text-ink-muted">{unused.data.total} matching fields in the local snapshot</span>
+              <span className="text-body text-ink-muted">
+                {unused.data.total} matching fields in the local snapshot
+              </span>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-body-compact">
                   <thead className="border-b border-hairline text-ink-subtle">
-                    <tr><th className="p-2">Field</th><th className="p-2">Dataset</th><th className="p-2">Coverage</th><th className="p-2">History</th></tr>
+                    <tr>
+                      <th className="p-2">Field</th>
+                      <th className="p-2">Dataset</th>
+                      <th className="p-2">Coverage</th>
+                      <th className="p-2">History</th>
+                    </tr>
                   </thead>
                   <tbody>
                     {unused.data.results.slice(0, 20).map((f) => (
-                      <tr key={f.field_id} className="border-b border-hairline-subtle text-ink-muted">
+                      <tr
+                        key={f.field_id}
+                        className="border-b border-hairline-subtle text-ink-muted"
+                      >
                         <td className="max-w-xs break-all p-2 text-ink">{f.field_id}</td>
                         <td className="p-2">{f.dataset_id ?? '—'}</td>
                         <td className="num p-2">{fmtPct(f.coverage)}</td>
