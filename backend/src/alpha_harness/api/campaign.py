@@ -2,6 +2,7 @@
 
 Returns BRAIN-sourced values and stored catalog rows, never simulates or submits.
 """
+
 import asyncio
 from datetime import datetime
 from typing import Annotated, Any
@@ -118,8 +119,15 @@ async def unused_fields(
             ),
         )
     columns = (
-        "field_id", "dataset_id", "category_name", "description", "field_type",
-        "coverage", "date_coverage", "alpha_count", "pyramid_multiplier"
+        "field_id",
+        "dataset_id",
+        "category_name",
+        "description",
+        "field_type",
+        "coverage",
+        "date_coverage",
+        "alpha_count",
+        "pyramid_multiplier",
     )
     return UnusedFields(
         region=region,
