@@ -64,8 +64,7 @@ interface Unused {
   qualificationNote: string
 }
 
-const fmtPct = (value: number | null) =>
-  value === null ? '—' : `${Math.round(value * 100)}%`
+const fmtPct = (value: number | null) => (value === null ? '—' : `${Math.round(value * 100)}%`)
 
 export function CampaignScreen() {
   const campaign = useQuery({
@@ -90,10 +89,16 @@ export function CampaignScreen() {
   const unused = useQuery({
     queryKey: ['campaign', 'unused-fields', focus?.region, focus?.delay, focus?.universe],
     enabled: focus !== undefined,
-    queryFn: () =>
-      http.get<Unused>(
-        `/api/campaign/unused-fields?region=${encodeURIComponent(focus!.region)}&delay=${focus!.delay}&universe=${encodeURIComponent(focus!.universe)}&limit=30`,
-      ),
+    queryFn: () => {
+      if (!focus) throw new Error('No synced catalog scope')
+      const params = new URLSearchParams({
+        region: focus.region,
+        delay: String(focus.delay),
+        universe: focus.universe,
+        limit: '30',
+      })
+      return http.get<Unused>(`/api/campaign/unused-fields?${params.toString()}`)
+    },
   })
 
   const result = campaign.data
@@ -102,8 +107,8 @@ export function CampaignScreen() {
     <Page>
       <PageHeader title="Q4 Research Campaign" />
       <p className="max-w-3xl text-body text-ink-muted">
-        Research priorities based on the official BRAIN quarterly counts, synced catalog
-        and pyramid multipliers. These are planning aids, not submission guarantees.
+        Research priorities based on the official BRAIN quarterly counts, synced catalog and pyramid
+        multipliers. These are planning aids, not submission guarantees.
       </p>
       {campaign.isError && (
         <ErrorNotice error={campaign.error} title="Campaign metrics unavailable" />
@@ -145,18 +150,20 @@ export function CampaignScreen() {
           <Panel>
             <div className="flex flex-col gap-3">
               <h2 className="text-title font-semibold">Upcoming Q4 milestones</h2>
-              {result.milestones.filter((m) => m.upcoming).map((m) => (
-                <div
-                  key={m.date}
-                  className="flex justify-between gap-3 border-b border-hairline pb-2 text-body"
-                >
-                  <span className="text-ink">{m.label}</span>
-                  <span className="num whitespace-nowrap text-ink-muted">{m.date}</span>
-                </div>
-              ))}
+              {result.milestones
+                .filter((m) => m.upcoming)
+                .map((m) => (
+                  <div
+                    key={m.date}
+                    className="flex justify-between gap-3 border-b border-hairline pb-2 text-body"
+                  >
+                    <span className="text-ink">{m.label}</span>
+                    <span className="num whitespace-nowrap text-ink-muted">{m.date}</span>
+                  </div>
+                ))}
               <p className="text-body-compact text-ink-subtle">
-                Dates sourced from the 2026 announcement slides or marked as internal review
-                dates. Verify active competition eligibility inside BRAIN.
+                Dates sourced from the 2026 announcement slides or marked as internal review dates.
+                Verify active competition eligibility inside BRAIN.
               </p>
             </div>
           </Panel>
@@ -184,9 +191,13 @@ export function CampaignScreen() {
                         className="border-b border-hairline-subtle text-ink-muted"
                       >
                         <td className="p-2">{p.category}</td>
-                        <td className="num p-2">{p.region}/D{p.delay}</td>
+                        <td className="num p-2">
+                          {p.region}/D{p.delay}
+                        </td>
                         <td className="num p-2">×{p.multiplier.toFixed(1)}</td>
-                        <td className="num p-2">{p.submitted} submitted · {p.remaining} needed</td>
+                        <td className="num p-2">
+                          {p.submitted} submitted · {p.remaining} needed
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -195,7 +206,9 @@ export function CampaignScreen() {
               {result.pyramidCandidates.length === 0 && (
                 <p className="text-ink-subtle">No incomplete synced pyramids were returned.</p>
               )}
-              <Link to="/pyramids" className="text-body text-primary">Open pyramid matrix</Link>
+              <Link to="/pyramids" className="text-body text-primary">
+                Open pyramid matrix
+              </Link>
             </div>
           </Panel>
           <p className="text-body-compact text-ink-subtle">{result.performanceNote}</p>
@@ -249,9 +262,15 @@ export function CampaignScreen() {
             </>
           )}
           <div className="flex flex-wrap gap-4 text-body">
-            <Link to="/sync" className="text-primary">Sync catalog</Link>
-            <Link to="/data" className="text-primary">Explore data</Link>
-            <Link to="/labs/power-pool" className="text-primary">Open Power Pool Lab</Link>
+            <Link to="/sync" className="text-primary">
+              Sync catalog
+            </Link>
+            <Link to="/data" className="text-primary">
+              Explore data
+            </Link>
+            <Link to="/labs/power-pool" className="text-primary">
+              Open Power Pool Lab
+            </Link>
           </div>
         </div>
       </Panel>
