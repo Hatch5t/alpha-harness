@@ -27,9 +27,7 @@ def in_q4(day: date) -> bool:
     return QUARTER_START <= day <= QUARTER_END
 
 
-def rank_pyramids(
-    grid: dict[str, Any], *, limit: int = 15
-) -> list[dict[str, Any]]:
+def rank_pyramids(grid: dict[str, Any], *, limit: int = 15) -> list[dict[str, Any]]:
     """Prioritise feasible, incomplete, locally synced pyramids.
 
     A pyramid is considered formulated after the threshold supplied by the
@@ -58,9 +56,7 @@ def rank_pyramids(
         # The scope preference and work-in-progress bonus are explicit and
         # modest, so an attractive multiplier is not mistaken for a signal.
         priority = (
-            float(multiplier)
-            + FOCUS_SCOPES.get((region, delay), 0.0)
-            + 0.15 * alpha_count / needed
+            float(multiplier) + FOCUS_SCOPES.get((region, delay), 0.0) + 0.15 * alpha_count / needed
         )
         rows.append(
             {
