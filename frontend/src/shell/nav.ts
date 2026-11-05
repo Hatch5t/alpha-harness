@@ -1,4 +1,5 @@
 import {
+  CalendarRangeIcon,
   ChartPieIcon,
   DatabaseIcon,
   FlaskConicalIcon,
@@ -106,6 +107,12 @@ export const NAV = [
     group: 'BRAIN',
     label: 'Competitions',
     icon: TrophyIcon,
+  },
+  {
+    to: '/campaign',
+    group: 'BRAIN',
+    label: 'Q4 Campaign',
+    icon: CalendarRangeIcon,
   },
   {
     to: '/pyramids',
