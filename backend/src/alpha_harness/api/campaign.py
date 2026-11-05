@@ -4,14 +4,11 @@ Returns BRAIN-sourced values and stored catalog rows, never simulates or submits
 """
 import asyncio
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 
 from ..brain.filters import PLATFORM_TZ
-from ..catalog.pyramids import pyramid_grid
-from ..catalog.queries import FieldFilter, Tuple4
-from ..schemas import Out
 from ..campaign_rules import (
     EXPERT_PYRAMIDS,
     EXPERT_SIGNALS,
@@ -19,6 +16,9 @@ from ..campaign_rules import (
     milestones,
     rank_pyramids,
 )
+from ..catalog.pyramids import pyramid_grid
+from ..catalog.queries import FieldFilter, Tuple4
+from ..schemas import Out
 from .deps import State
 from .quarter import standing
 
@@ -82,12 +82,12 @@ class UnusedFields(Out):
 @router.get("/unused-fields")
 async def unused_fields(
     state: State,
-    region: str = Query(min_length=2, max_length=12),
-    delay: int = Query(ge=0, le=1),
-    universe: str = Query(min_length=2, max_length=40),
-    min_coverage: float = Query(default=0.7, ge=0.0, le=1.0),
-    min_date_coverage: float = Query(default=0.6, ge=0.0, le=1.0),
-    limit: int = Query(default=50, ge=1, le=200),
+    region: Annotated[str, Query(min_length=2, max_length=12)],
+    delay: Annotated[int, Query(ge=0, le=1)],
+    universe: Annotated[str, Query(min_length=2, max_length=40)],
+    min_coverage: Annotated[float, Query(ge=0.0, le=1.0)] = 0.7,
+    min_date_coverage: Annotated[float, Query(ge=0.0, le=1.0)] = 0.6,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> UnusedFields:
     """Find fields whose BRAIN Alpha Count was zero at the last catalog sync.
 
