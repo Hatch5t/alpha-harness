@@ -1,4 +1,5 @@
 import {
+  CalendarRangeIcon,
   ChartPieIcon,
   DatabaseIcon,
   FlaskConicalIcon,
@@ -10,7 +11,6 @@ import {
   SparklesIcon,
   TriangleIcon,
   TrophyIcon,
-  CalendarRangeIcon,
   WrenchIcon,
 } from 'lucide-react'
 
