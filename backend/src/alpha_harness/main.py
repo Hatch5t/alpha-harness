@@ -170,7 +170,8 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(catalog.router)
-    app.include_router(campaign.router)
+    # Preview-only read API; no generated-client contract until its shape is stable.
+    app.include_router(campaign.router, include_in_schema=False)
     app.include_router(sims.router)
     app.include_router(alphas.router)
     app.include_router(template_lab.router)
