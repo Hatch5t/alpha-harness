@@ -46,9 +46,9 @@ class CampaignRulesTests(unittest.TestCase):
         }
         ranked = rank_pyramids(grid)
         self.assertEqual(len(ranked), 1)
-        self.assertEqual(ranked[0]["category"], "Fundamental")
-        self.assertEqual(ranked[0]["remaining"], 1)
-        self.assertTrue(ranked[0]["isPowerPoolThemeScope"])
+        self.assertEqual(ranked[0].category, "Fundamental")
+        self.assertEqual(ranked[0].remaining, 1)
+        self.assertTrue(ranked[0].region == "GLB")
 
     def test_no_data_and_invalid_threshold(self) -> None:
         self.assertEqual(rank_pyramids({}), [])
@@ -57,10 +57,10 @@ class CampaignRulesTests(unittest.TestCase):
 
     def test_announced_deadline_and_reviews_distinguished(self) -> None:
         entries = milestones(date(2026, 11, 5))
-        deadlines = {entry["date"]: entry for entry in entries}
-        self.assertEqual(deadlines["2026-11-22"]["source"], "platform_slide")
-        self.assertEqual(deadlines["2026-11-30"]["source"], "internal_planning")
-        self.assertTrue(deadlines["2026-11-09"]["upcoming"])
+        deadlines = {entry.date: entry for entry in entries}
+        self.assertEqual(deadlines["2026-11-22"].source, "platform_slide")
+        self.assertEqual(deadlines["2026-11-30"].source, "internal_planning")
+        self.assertTrue(deadlines["2026-11-09"].upcoming)
 
 
 if __name__ == "__main__":

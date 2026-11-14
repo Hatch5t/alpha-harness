@@ -5,7 +5,8 @@ local vault, and nothing reads them from the environment: seeding them from a fi
 let a checked-out repository sign in as its owner.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from os import environ
 from pathlib import Path
 
 #: The pages that may open the telemetry socket: the Vite dev server, and the built UI the
@@ -28,7 +29,11 @@ DATA_DIR = Path.home().joinpath(".alpha-harness").resolve()
 class Settings:
     """Where local state lives."""
 
-    data_dir: Path = DATA_DIR
+    data_dir: Path = field(
+        default_factory=lambda: Path(environ.get("ALPHA_HARNESS_DATA_DIR", str(DATA_DIR)))
+        .expanduser()
+        .resolve()
+    )
 
     @property
     def sqlite_path(self) -> Path:

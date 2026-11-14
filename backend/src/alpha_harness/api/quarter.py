@@ -6,14 +6,15 @@ performance, is BRAIN's own arithmetic and is not guessed at.
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import structlog
 from fastapi import APIRouter
 
+from ..brain.errors import BrainError
 from ..brain.filters import PLATFORM_TZ
 from ..brain.platform import PYRAMID_MIN_ALPHAS
-from ..catalog.pyramids import next_quarter_start, quarter_start
+from ..catalog.pyramids import next_quarter_start, pyramid_counts, quarter_start
 from ..schemas import Out
 from .deps import State
 
@@ -45,33 +46,58 @@ async def standing(state: State) -> QuarterStanding:
     many pyramids as it has data categories, so the pyramid counts sum to more than the
     number of Alphas and cannot stand in for it.
     """
+    result = await read_standing(state, datetime.now(PLATFORM_TZ).date())
+    return QuarterStanding.model_validate(
+        result.model_dump()
+        | {
+            "submitted": result.submitted or 0,
+            "pyramids_formulated": result.pyramids_formulated or 0,
+            "pyramids_started": result.pyramids_started or 0,
+        }
+    )
+
+
+class StandingEvidence(Out):
+    label: str
+    start: str
+    end: str
+    submitted: int | None
+    pyramids_formulated: int | None
+    pyramids_started: int | None
+    alphas_per_pyramid: int
+
+
+async def read_standing(state: State, today: date) -> StandingEvidence:
     # BRAIN's day, as the Pyramids screen counts it: a UTC date starts the next quarter hours early.
-    today = datetime.now(PLATFORM_TZ).date()
     after = next_quarter_start(today)
     # Both ends inclusive.
     start, end = quarter_start(today), after - timedelta(days=1)
     days, pyramids = await asyncio.gather(
         state.endpoints.submission_activity(),
         # BRAIN's own site asks up to the day after the quarter, so its last day counts.
-        state.endpoints.pyramid_alphas(start.isoformat(), after.isoformat()),
+        pyramid_counts(state.endpoints, today, account=state.auth.session.user_id),
         return_exceptions=True,
     )
-    if isinstance(days, BaseException):
+    if isinstance(days, BrainError):
         log.warning("quarter.submissions_failed", exc_info=days)
-        days = []
-    if isinstance(pyramids, BaseException):
+        days = None
+    elif isinstance(days, BaseException):
+        raise days
+    if isinstance(pyramids, BrainError):
         log.warning("quarter.pyramids_failed", exc_info=pyramids)
-        pyramids = []
+        pyramids = None
+    elif isinstance(pyramids, BaseException):
+        raise pyramids
 
     first, last = start.isoformat(), end.isoformat()
-    submitted = sum(count for day, count in days if first <= day <= last)
-    counts = [int(p.get("alphaCount") or 0) for p in pyramids]
-    return QuarterStanding(
+    submitted = None if days is None else sum(count for day, count in days if first <= day <= last)
+    counts = None if pyramids is None else [int(p.get("alphaCount") or 0) for p in pyramids]
+    return StandingEvidence(
         label=f"{start.year}-Q{(start.month - 1) // 3 + 1}",
         start=first,
         end=last,
         submitted=submitted,
-        pyramids_formulated=sum(1 for n in counts if n >= PYRAMID_MIN_ALPHAS),
-        pyramids_started=sum(1 for n in counts if 0 < n < PYRAMID_MIN_ALPHAS),
+        pyramids_formulated=None if counts is None else sum(n >= PYRAMID_MIN_ALPHAS for n in counts),
+        pyramids_started=None if counts is None else sum(0 < n < PYRAMID_MIN_ALPHAS for n in counts),
         alphas_per_pyramid=PYRAMID_MIN_ALPHAS,
     )

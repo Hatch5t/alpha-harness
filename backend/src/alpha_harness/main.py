@@ -29,6 +29,7 @@ from .api import (
     alphas,
     auth,
     campaign,
+    campaign_research,
     catalog,
     chat,
     competitions,
@@ -170,8 +171,9 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(catalog.router)
-    # Preview-only read API; no generated-client contract until its shape is stable.
+    # Campaign preview has its own API and frontend contract.
     app.include_router(campaign.router, include_in_schema=False)
+    app.include_router(campaign_research.router, include_in_schema=False)
     app.include_router(sims.router)
     app.include_router(alphas.router)
     app.include_router(template_lab.router)

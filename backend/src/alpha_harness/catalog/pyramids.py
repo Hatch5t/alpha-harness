@@ -25,10 +25,12 @@ MULTIPLIERS_TTL = 6 * 3600
 COUNTS_TTL = 600
 
 # In-process rather than persisted: a restart costs two cheap GETs.
-_cache: dict[str, tuple[float, Any]] = {}
+_cache: dict[tuple[str, str], tuple[float, Any]] = {}
 
 
-async def _cached(key: str, ttl: float, fetch: Callable[[], Awaitable[Any]]) -> Any:
+async def _cached(key: tuple[str, str] | None, ttl: float, fetch: Callable[[], Awaitable[Any]]) -> Any:
+    if key is None:
+        return await fetch()
     hit = _cache.get(key)
     if hit is not None and time.monotonic() - hit[0] < ttl:
         return hit[1]
@@ -124,14 +126,29 @@ def assemble(
     }
 
 
-async def pyramid_grid(endpoints: BrainEndpoints, catalog: Catalog) -> dict[str, Any]:
-    today = datetime.now(PLATFORM_TZ).date()
+async def pyramid_counts(
+    endpoints: BrainEndpoints, today: date, *, account: str | None = None
+) -> list[dict[str, Any]]:
     start, end = quarter_start(today), next_quarter_start(today)
-    multipliers = await _cached("multipliers", MULTIPLIERS_TTL, endpoints.pyramid_multipliers)
-    counts = await _cached(
-        f"alphas:{start}",
+    return await _cached(
+        (account, f"alphas:{start}") if account else None,
         COUNTS_TTL,
         lambda: endpoints.pyramid_alphas(start.isoformat(), end.isoformat()),
+    )
+
+
+async def pyramid_grid(
+    endpoints: BrainEndpoints,
+    catalog: Catalog,
+    *,
+    account: str | None = None,
+    today: date | None = None,
+) -> dict[str, Any]:
+    today = today or datetime.now(PLATFORM_TZ).date()
+    start, end = quarter_start(today), next_quarter_start(today)
+    counts = await pyramid_counts(endpoints, today, account=account)
+    multipliers = await _cached(
+        (account, "multipliers") if account else None, MULTIPLIERS_TTL, endpoints.pyramid_multipliers
     )
     rows = await catalog.query(
         "SELECT DISTINCT category_id, region, delay FROM data_field WHERE category_id IS NOT NULL"
