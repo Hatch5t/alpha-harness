@@ -274,12 +274,12 @@ function ExperimentReview({ row, refresh }: { row: Experiment; refresh: () => Pr
             Reason
             <input className={INPUT} name="note" required minLength={10} maxLength={4000} />
           </label>
-          <Button type="submit" disabled={decide.isPending}>Save decision</Button>
+          <Button type="submit" disabled={decide.isPending}>
+            Save decision
+          </Button>
         </form>
       )}
-      {decide.isError && (
-        <ErrorNotice error={decide.error} title="Decision was not recorded" />
-      )}
+      {decide.isError && <ErrorNotice error={decide.error} title="Decision was not recorded" />}
     </div>
   )
 }

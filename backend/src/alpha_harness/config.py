@@ -30,9 +30,9 @@ class Settings:
     """Where local state lives."""
 
     data_dir: Path = field(
-        default_factory=lambda: Path(environ.get("ALPHA_HARNESS_DATA_DIR", str(DATA_DIR)))
-        .expanduser()
-        .resolve()
+        default_factory=lambda: (
+            Path(environ.get("ALPHA_HARNESS_DATA_DIR", str(DATA_DIR))).expanduser().resolve()
+        )
     )
 
     @property

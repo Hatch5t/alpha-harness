@@ -231,9 +231,13 @@ class CampaignApiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_prospective_plan_waits_for_validation_window(self) -> None:
         start = datetime.now(UTC).date() + timedelta(days=10)
-        body = plan().model_copy(
-            update={"validation_start": start, "validation_end": start + timedelta(days=100)}
-        ).model_dump(mode="json")
+        body = (
+            plan()
+            .model_copy(
+                update={"validation_start": start, "validation_end": start + timedelta(days=100)}
+            )
+            .model_dump(mode="json")
+        )
         created = self.client.post("/api/campaign/experiments", json=body, headers=self.headers)
         self.assertEqual(created.status_code, 201, created.text)
         self.assertTrue(created.json()["prospective"])

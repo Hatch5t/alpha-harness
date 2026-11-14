@@ -67,7 +67,7 @@ def identity(row: dict[str, Any]) -> tuple[str, str] | None:
     if language == "FASTEXPR":
         try:
             expression = fastexpr.render(fastexpr.parse(expression)).rstrip(";")
-        except (fastexpr.ParseError, RecursionError):
+        except fastexpr.ParseError, RecursionError:
             expression = expression.strip()
     return language, expression
 
