@@ -42,8 +42,7 @@ interface Unused {
   results: Field[]
 }
 
-const fmtPct = (value?: number | null) =>
-  value == null ? '—' : `${Math.round(value * 100)}%`
+const fmtPct = (value?: number | null) => (value == null ? '—' : `${Math.round(value * 100)}%`)
 const scopeKey = (s: Scope) => `${s.region}/D${s.delay}/${s.universe}`
 const pageSize = 30
 
@@ -100,15 +99,25 @@ export function CampaignScreen() {
             before choosing a candidate.
           </p>
           <div className="flex flex-wrap gap-4 text-body">
-            <Link to="/competitions" className="text-primary">Competitions</Link>
-            <Link to="/labs/template" className="text-primary">Template Lab</Link>
-            <Link to="/labs/power-pool" className="text-primary">Power Pool Lab</Link>
-            <Link to="/portfolio" className="text-primary">Portfolio</Link>
+            <Link to="/competitions" className="text-primary">
+              Competitions
+            </Link>
+            <Link to="/labs/template" className="text-primary">
+              Template Lab
+            </Link>
+            <Link to="/labs/power-pool" className="text-primary">
+              Power Pool Lab
+            </Link>
+            <Link to="/portfolio" className="text-primary">
+              Portfolio
+            </Link>
           </div>
         </div>
       </Panel>
       <ResearchReview />
-      {campaign.isError && <ErrorNotice error={campaign.error} title="Campaign details unavailable" />}
+      {campaign.isError && (
+        <ErrorNotice error={campaign.error} title="Campaign details unavailable" />
+      )}
       {result && (
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -146,8 +155,12 @@ export function CampaignScreen() {
                 <div key={m.date} className="flex flex-wrap justify-between gap-3 text-body">
                   <span>{m.label}</span>
                   <span className="num text-ink-muted">
-                    {m.date} · {m.source === 'platform_slide' ? 'Provisional' :
-                      m.source === 'internal_planning' ? 'Research review' : 'Quarter calendar'}
+                    {m.date} {'·'}
+                    {m.source === 'platform_slide'
+                      ? 'Provisional'
+                      : m.source === 'internal_planning'
+                        ? 'Research review'
+                        : 'Quarter calendar'}
                     {!m.upcoming && ' · Past'}
                   </span>
                 </div>
@@ -163,12 +176,21 @@ export function CampaignScreen() {
               {result.pyramidCandidates === null && <p>Q4 pyramid activity unavailable.</p>}
               {result.pyramidCandidates?.length === 0 && <p>No incomplete synced pyramids.</p>}
               {result.pyramidCandidates?.map((p) => (
-                <div key={`${p.categoryId}:${p.region}:${p.delay}`} className="flex flex-wrap gap-3">
-                  <span>{p.category} · {p.region}/D{p.delay}</span>
-                  <span className="num text-ink-muted">×{p.multiplier} · {p.submitted} submitted · {p.remaining} needed</span>
+                <div
+                  key={`${p.categoryId}:${p.region}:${p.delay}`}
+                  className="flex flex-wrap gap-3"
+                >
+                  <span>
+                    {p.category} · {p.region}/D{p.delay}
+                  </span>
+                  <span className="num text-ink-muted">
+                    ×{p.multiplier} · {p.submitted} submitted · {p.remaining} needed
+                  </span>
                 </div>
               ))}
-              <Link to="/pyramids" className="text-primary">Pyramid matrix</Link>
+              <Link to="/pyramids" className="text-primary">
+                Pyramid matrix
+              </Link>
             </div>
           </Panel>
         </>
@@ -177,8 +199,8 @@ export function CampaignScreen() {
         <div className="flex flex-col gap-3">
           <h2 className="text-title font-semibold">Unused field leads</h2>
           <p className="text-body-compact text-ink-muted">
-            The local snapshot filters for zero alpha count, at least 70% instrument coverage and
-            at least 60% date coverage. Verify live unused-field eligibility in BRAIN.
+            The local snapshot filters for zero alpha count, at least 70% instrument coverage and at
+            least 60% date coverage. Verify live unused-field eligibility in BRAIN.
           </p>
           <div className="flex flex-wrap gap-3">
             <label className="flex flex-col gap-1">
@@ -191,7 +213,9 @@ export function CampaignScreen() {
                   setOffset(0)
                 }}
               >
-                <option value="" disabled>Choose a synced market</option>
+                <option value="" disabled>
+                  Choose a synced market
+                </option>
                 {available.map((s) => (
                   <option key={scopeKey(s)} value={scopeKey(s)}>
                     {scopeKey(s)}
@@ -212,7 +236,9 @@ export function CampaignScreen() {
               />
             </label>
           </div>
-          {scopes.isError && <ErrorNotice error={scopes.error} title="Synced markets unavailable" />}
+          {scopes.isError && (
+            <ErrorNotice error={scopes.error} title="Synced markets unavailable" />
+          )}
           {unused.isError && <ErrorNotice error={unused.error} title="Field search unavailable" />}
           {scopes.isSuccess && !focus && <p>Choose a synced market to search for unused fields.</p>}
           {unused.data && !unused.data.synced && <p>This market needs a catalog sync.</p>}
@@ -225,7 +251,13 @@ export function CampaignScreen() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-body-compact">
                   <thead className="border-b border-hairline text-ink-subtle">
-                    <tr><th>Field</th><th>Dataset</th><th>Type</th><th>Coverage</th><th>Dates</th></tr>
+                    <tr>
+                      <th>Field</th>
+                      <th>Dataset</th>
+                      <th>Type</th>
+                      <th>Coverage</th>
+                      <th>Dates</th>
+                    </tr>
                   </thead>
                   <tbody>
                     {unused.data.results.map((f) => (
@@ -244,7 +276,9 @@ export function CampaignScreen() {
                 </table>
               </div>
               <div className="flex gap-3">
-                <Button disabled={offset === 0} onClick={() => setOffset(offset - pageSize)}>Previous</Button>
+                <Button disabled={offset === 0} onClick={() => setOffset(offset - pageSize)}>
+                  Previous
+                </Button>
                 <Button
                   disabled={offset + pageSize >= unused.data.total || offset + pageSize > 10000}
                   onClick={() => setOffset(offset + pageSize)}
@@ -255,8 +289,12 @@ export function CampaignScreen() {
             </>
           )}
           <div className="flex flex-wrap gap-4">
-            <Link to="/sync" className="text-primary">Sync catalog</Link>
-            <Link to="/data" className="text-primary">Data Explorer</Link>
+            <Link to="/sync" className="text-primary">
+              Sync catalog
+            </Link>
+            <Link to="/data" className="text-primary">
+              Data Explorer
+            </Link>
           </div>
         </div>
       </Panel>

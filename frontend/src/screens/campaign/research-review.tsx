@@ -94,7 +94,13 @@ export function ResearchReview() {
         >
           <label className="flex flex-col gap-1">
             Economic hypothesis and expected direction
-            <textarea className={INPUT} name="hypothesis" required minLength={12} maxLength={4000} />
+            <textarea
+              className={INPUT}
+              name="hypothesis"
+              required
+              minLength={12}
+              maxLength={4000}
+            />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1">
@@ -115,21 +121,44 @@ export function ResearchReview() {
             </label>
             <label className="flex flex-col gap-1">
               Embargo in calendar days
-              <input className={INPUT} name="embargo" type="number" min="0" max="365" defaultValue="5" required />
+              <input
+                className={INPUT}
+                name="embargo"
+                type="number"
+                min="0"
+                max="365"
+                defaultValue="5"
+                required
+              />
             </label>
             <label className="flex flex-col gap-1">
               Cost in basis points
-              <input className={INPUT} name="cost" type="number" min="0" max="100" step="0.1" defaultValue="5" required />
+              <input
+                className={INPUT}
+                name="cost"
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                defaultValue="5"
+                required
+              />
             </label>
           </div>
           <label className="flex flex-col gap-1">
             Exact active BRAIN theme name or ID
             <input className={INPUT} name="theme" maxLength={240} />
           </label>
-          <div><Button type="submit" disabled={freeze.isPending}>Freeze research plan</Button></div>
+          <div>
+            <Button type="submit" disabled={freeze.isPending}>
+              Freeze research plan
+            </Button>
+          </div>
         </form>
         {freeze.isError && <ErrorNotice error={freeze.error} title="Could not freeze plan" />}
-        {history.isError && <ErrorNotice error={history.error} title="Research history unavailable" />}
+        {history.isError && (
+          <ErrorNotice error={history.error} title="Research history unavailable" />
+        )}
         {history.data?.map((row) => (
           <ExperimentReview key={row.id} row={row} refresh={refresh} />
         ))}
@@ -162,35 +191,46 @@ function ExperimentReview({ row, refresh }: { row: Experiment; refresh: () => Pr
       <p className="whitespace-pre-wrap text-body">{row.plan.hypothesis}</p>
       <p className="num text-body-compact text-ink-muted">
         {row.plan.candidateIds.join(', ')} · {row.plan.validationStart} to {row.plan.validationEnd}
-        {' · '}{row.plan.embargoDays} day embargo · {row.plan.costBps} bps
+        {' · '}
+        {row.plan.embargoDays} day embargo · {row.plan.costBps} bps
       </p>
       <p className="text-body-compact text-ink-muted">
-        Baseline {row.plan.baselineIds.join(', ') || 'unavailable'} ·
-        Theme {row.plan.expectedTheme ?? 'unverified'}
+        Baseline {row.plan.baselineIds.join(', ') || 'unavailable'} · Theme{' '}
+        {row.plan.expectedTheme ?? 'unverified'}
       </p>
       {!row.review && (
-        <div><Button disabled={evaluate.isPending} onClick={() => evaluate.mutate()}>
-          Evaluate stored evidence
-        </Button></div>
+        <div>
+          <Button disabled={evaluate.isPending} onClick={() => evaluate.mutate()}>
+            Evaluate stored evidence
+          </Button>
+        </div>
       )}
       {evaluate.isError && <ErrorNotice error={evaluate.error} title="Evaluation failed" />}
       {row.review?.candidates.map((c) => (
         <div key={c.alphaId} className="flex flex-col gap-2 rounded-md border border-hairline p-3">
-          <Link to="/alpha/$alphaId" params={{ alphaId: c.alphaId }} className="text-primary">{c.alphaId}</Link>
+          <Link to="/alpha/$alphaId" params={{ alphaId: c.alphaId }} className="text-primary">
+            {c.alphaId}
+          </Link>
           <p className="num text-body-compact">
-            Discovery Sharpe {number(c.discoverySharpe)} · Validation Sharpe {number(c.holdoutSharpe)}
-            {' · '}{c.holdoutDays} dates · Portfolio ΔSharpe {number(c.holdoutDelta)}
-            {' · '}{c.portfolioDays} common dates
+            Discovery Sharpe {number(c.discoverySharpe)} · Validation Sharpe{' '}
+            {number(c.holdoutSharpe)}
+            {' · '}
+            {c.holdoutDays} dates · Portfolio ΔSharpe {number(c.holdoutDelta)}
+            {' · '}
+            {c.portfolioDays} common dates
           </p>
           <p className="num text-body-compact">
-            BRAIN Sharpe {number(c.sharpe)} · Fitness {number(c.fitness)} · Turnover {number(c.turnover)}
+            BRAIN Sharpe {number(c.sharpe)} · Fitness {number(c.fitness)} · Turnover{' '}
+            {number(c.turnover)}
             {' · '}Local pool correlation {number(c.poolCorrelation)} ({c.poolVerdict ?? 'unknown'})
             {' · '}AMER {c.amerCheck ?? 'unknown'} · Theme {c.themeCheck ?? 'unknown'}
           </p>
           {c.duplicateIds.length > 0 && <p>Matching IDs {c.duplicateIds.join(', ')}</p>}
           {c.reasons.length > 0 && (
             <ul className="list-disc pl-5 text-body-compact text-ink-muted">
-              {c.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+              {c.reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
             </ul>
           )}
         </div>
@@ -198,23 +238,29 @@ function ExperimentReview({ row, refresh }: { row: Experiment; refresh: () => Pr
       {row.review?.decision && (
         <p className="text-body">
           {row.review.decision.decision === 'reject' ? 'Rejected' : 'Approved for manual review'}
-          {' · '}{row.review.decision.alphaId} · {row.review.decision.note}
+          {' · '}
+          {row.review.decision.alphaId} · {row.review.decision.note}
         </p>
       )}
       {row.review && !row.review.decision && (
-        <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => {
-          e.preventDefault()
-          const data = new FormData(e.currentTarget)
-          decide.mutate({
-            alphaId: String(data.get('alpha')),
-            decision: data.get('decision') === 'reject' ? 'reject' : 'approve_for_manual_review',
-            note: String(data.get('note')),
-          })
-        }}>
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            const data = new FormData(e.currentTarget)
+            decide.mutate({
+              alphaId: String(data.get('alpha')),
+              decision: data.get('decision') === 'reject' ? 'reject' : 'approve_for_manual_review',
+              note: String(data.get('note')),
+            })
+          }}
+        >
           <label className="flex flex-col gap-1">
             Alpha
             <select className={INPUT} name="alpha">
-              {row.review.candidates.map((c) => <option key={c.alphaId}>{c.alphaId}</option>)}
+              {row.review.candidates.map((c) => (
+                <option key={c.alphaId}>{c.alphaId}</option>
+              ))}
             </select>
           </label>
           <label className="flex flex-col gap-1">
@@ -231,7 +277,9 @@ function ExperimentReview({ row, refresh }: { row: Experiment; refresh: () => Pr
           <Button type="submit" disabled={decide.isPending}>Save decision</Button>
         </form>
       )}
-      {decide.isError && <ErrorNotice error={decide.error} title="Decision was not recorded" />}
+      {decide.isError && (
+        <ErrorNotice error={decide.error} title="Decision was not recorded" />
+      )}
     </div>
   )
 }

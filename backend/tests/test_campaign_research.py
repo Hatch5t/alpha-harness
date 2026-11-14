@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 from contextlib import closing
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -230,7 +230,7 @@ class CampaignApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(history[0]["review"]["decision"]["decision"], "reject")
 
     async def test_prospective_plan_waits_for_validation_window(self) -> None:
-        start = date.today() + timedelta(days=10)
+        start = datetime.now(UTC).date() + timedelta(days=10)
         body = plan().model_copy(
             update={"validation_start": start, "validation_end": start + timedelta(days=100)}
         ).model_dump(mode="json")

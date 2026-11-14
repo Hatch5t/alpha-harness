@@ -92,12 +92,14 @@ async def read_standing(state: State, today: date) -> StandingEvidence:
     first, last = start.isoformat(), end.isoformat()
     submitted = None if days is None else sum(count for day, count in days if first <= day <= last)
     counts = None if pyramids is None else [int(p.get("alphaCount") or 0) for p in pyramids]
+    formulated = None if counts is None else sum(n >= PYRAMID_MIN_ALPHAS for n in counts)
+    started = None if counts is None else sum(0 < n < PYRAMID_MIN_ALPHAS for n in counts)
     return StandingEvidence(
         label=f"{start.year}-Q{(start.month - 1) // 3 + 1}",
         start=first,
         end=last,
         submitted=submitted,
-        pyramids_formulated=None if counts is None else sum(n >= PYRAMID_MIN_ALPHAS for n in counts),
-        pyramids_started=None if counts is None else sum(0 < n < PYRAMID_MIN_ALPHAS for n in counts),
+        pyramids_formulated=formulated,
+        pyramids_started=started,
         alphas_per_pyramid=PYRAMID_MIN_ALPHAS,
     )
