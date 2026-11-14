@@ -67,7 +67,7 @@ check:
       root: backend/
       run: >-
         uv run ruff check . && uv run ruff format --check . && uv run pyproject-fmt --check pyproject.toml
-        && uv run pyrefly check && uv run basedpyright
+        && uv run pyrefly check && uv run basedpyright && uv run python -m unittest discover -s tests
     # The Windows launcher is frozen separately and imports nothing from the backend, so it
     # sits outside the package and would otherwise be the one Python here nothing checks.
     - name: launcher

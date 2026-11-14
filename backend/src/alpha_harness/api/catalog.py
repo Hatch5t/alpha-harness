@@ -317,7 +317,9 @@ async def cancel_run(run_id: int, state: State) -> Cancelled:
 @router.get("/pyramids")
 async def pyramids(state: State) -> PyramidGrid:
     """Every pyramid: its multiplier, this quarter's alpha count, and download state."""
-    return PyramidGrid.model_validate(await pyramid_grid(state.endpoints, state.catalog))
+    return PyramidGrid.model_validate(
+        await pyramid_grid(state.endpoints, state.catalog, account=state.auth.session.user_id)
+    )
 
 
 @router.get("/scopes")
