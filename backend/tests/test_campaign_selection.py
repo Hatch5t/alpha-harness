@@ -19,9 +19,12 @@ from sqlalchemy import func, select
 
 from alpha_harness.api.deps import get_state
 from alpha_harness.campaign_review import ExperimentPlan, review_candidates
+from alpha_harness.db.duck import Catalog
 from alpha_harness.db.models import CampaignExperiment, Study, StudyStatus, Trial, TrialState
 from alpha_harness.db.sqlite import Database
+from alpha_harness.labs.params import POWER_POOL_SAMPLER
 from alpha_harness.main import create_app
+from alpha_harness.vault.store import AlphaVault
 
 
 class TaskSelectionTests(unittest.IsolatedAsyncioTestCase):
@@ -211,6 +214,101 @@ class TaskSelectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["plan"]["candidateIds"], [])
         self.assertEqual(result["source"]["selected"], 0)
         self.assertTrue(result["source"]["rejections"])
+
+    async def test_task_2_ten_quick_glb_d1_results_save_empty_review(self) -> None:
+        catalog = Catalog(Path(self.folder.name) / "quick.duckdb")
+        await catalog.open()
+        self.addAsyncCleanup(catalog.close)
+        self.state.alphas = AlphaVault(catalog)
+        async with self.db.session() as session:
+            task = Study(
+                id=2,
+                name="quick-power-pool",
+                label="LLM Power Pool Lab",
+                template_source="",
+                sampler=POWER_POOL_SAMPLER,
+                sampler_params={"region": "GLB", "delay": 1},
+                objectives=["sharpe"],
+                max_trials=10,
+                status=StudyStatus.COMPLETE,
+            )
+            session.add(task)
+            await session.flush()
+            session.add_all(
+                [
+                    Trial(study_id=2, number=i, alpha_id=f"quick{i}", state=TrialState.COMPLETE)
+                    for i in range(10)
+                ]
+            )
+        await catalog.upsert(
+            "alpha",
+            ("alpha_id", "region", "delay", "simulation_mode", "expression", "status"),
+            [
+                (f"quick{i}", "GLB", 1, "QUICK", f"rank(field{i})", "UNSUBMITTED")
+                for i in range(10)
+            ],
+        )
+        # Quick results can carry no PnL at all, or PnL without turnover.
+        await catalog.replace_pnl("quick0", [("quick0", date(2024, 1, 1), 12.0, None)])
+        self.body.update(
+            {
+                "taskId": 2,
+                "baselineIds": [],
+                "region": "GLB",
+                "delay": 1,
+                "purpose": "power_pool",
+                "validationStart": "2025-01-01",
+                "validationEnd": "2025-12-31",
+                "embargoDays": 5,
+                "costBps": 5,
+                "shortlistSize": 3,
+                "maxDiscoveryCorrelation": 0.5,
+            }
+        )
+        result = self.freeze()
+        self.assertEqual(result["plan"]["candidateIds"], [])
+        self.assertEqual(result["source"]["selected"], 0)
+        self.assertEqual(result["source"]["trialStates"], {"COMPLETE": 10})
+        self.assertEqual(result["source"]["rejections"], {"Quick simulation needs a full run": 10})
+        self.assertEqual(self.freeze()["id"], result["id"])
+        url = f"/api/campaign/experiments/{result['id']}"
+        rows = self.client.get(f"{url}/selection").json()["results"]
+        self.assertEqual(len(rows), 10)
+        self.assertTrue(all(not row["selected"] and row["reason"] for row in rows))
+        with patch("alpha_harness.api.campaign_research.local_power_pool") as pool:
+            review = self.client.post(f"{url}/evaluate", headers=self.headers)
+        pool.assert_not_called()
+        self.assertEqual(review.status_code, 200, review.text)
+        self.assertEqual(review.json()["candidates"], [])
+        exported = self.client.get(f"{url}/export").json()
+        self.assertEqual(len(exported["provenance"]["trials"]), 10)
+        self.assertEqual(exported["review"]["candidates"], [])
+        self.assertEqual(await catalog.scalar("SELECT count(*) FROM alpha_pnl"), 1)
+
+    async def test_full_results_with_missing_real_vault_series_request_sync(self) -> None:
+        catalog = Catalog(Path(self.folder.name) / "missing.duckdb")
+        await catalog.open()
+        self.addAsyncCleanup(catalog.close)
+        self.body["baselineIds"] = []
+        await catalog.upsert(
+            "alpha",
+            ("alpha_id", "region", "delay", "expression", "status"),
+            [
+                (key, "USA", 1, row["expression"], row["status"])
+                for key, row in self.stored.items()
+                if key != "baseline"
+            ],
+        )
+        self.state.alphas = AlphaVault(catalog)
+        response = self.client.post(
+            "/api/campaign/experiments/from-task", json=self.body, headers=self.headers
+        )
+        self.assertEqual(response.status_code, 422, response.text)
+        self.assertIn("Sync daily PnL with turnover", response.text)
+        async with self.db.session() as session:
+            self.assertEqual(
+                await session.scalar(select(func.count()).select_from(CampaignExperiment)), 1
+            )
 
     async def test_positive_and_negative_correlations_reduce_the_shortlist(self) -> None:
         for sign in [-1, 1]:

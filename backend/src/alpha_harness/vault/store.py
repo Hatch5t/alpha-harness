@@ -336,6 +336,17 @@ def _page_row(r: dict[str, Any]) -> dict[str, Any]:
 
 def _by_alpha[T](ids: list[str], days: list[date], values: list[T]) -> dict[str, dict[date, T]]:
     """Rows sorted by Alpha, each Alpha's days made a dict in one go rather than row by row."""
+    if not len(ids) == len(days) == len(values):
+        raise ValueError("Alpha IDs, dates and values must have equal lengths.")
+    # No rows means no groups; adding a terminal boundary here would create one end
+    # without a start. Keep the strict zips below for every non-empty result.
+    if not ids:
+        return {}
+    if any(
+        ids[i] < ids[i - 1] or (ids[i] == ids[i - 1] and days[i] <= days[i - 1])
+        for i in range(1, len(ids))
+    ):
+        raise ValueError("Daily series rows must be sorted by alpha and unique date.")
     starts = [i for i in range(len(ids)) if i == 0 or ids[i] != ids[i - 1]]
     ends = [*starts[1:], len(ids)]
     return {
@@ -741,15 +752,19 @@ class AlphaVault:
         return await asyncio.to_thread(_daily, table)
 
     async def series(self, alpha_ids: list[str]) -> dict[str, dict[date, tuple[float, float]]]:
-        """Each Alpha's daily ``(pnl, turnover)`` by date. Alphas still on the old series,
-        which has no turnover, are absent."""
+        """Finite daily ``(pnl, turnover)`` pairs on their stored dates, without filling gaps.
+
+        Missing PnL is not zero return. Missing, non-finite or negative turnover cannot
+        establish after-cost performance. Alphas without any complete pairs are absent.
+        """
         if not alpha_ids:
             return {}
         placeholders = ", ".join("?" for _ in alpha_ids)
         table = await self.catalog.arrow(
             f"""
-            SELECT alpha_id, date, coalesce(pnl, 0) AS pnl, turnover FROM alpha_pnl
+            SELECT alpha_id, date, pnl, turnover FROM alpha_pnl
             WHERE alpha_id IN ({placeholders}) AND turnover IS NOT NULL
+              AND pnl IS NOT NULL AND isfinite(pnl) AND isfinite(turnover) AND turnover >= 0
             ORDER BY alpha_id, date
             """,  # noqa: S608
             list(alpha_ids),

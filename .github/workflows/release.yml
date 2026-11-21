@@ -74,7 +74,7 @@ jobs:
         id: version
         shell: bash
         env:
-          REF: ${{ inputs.version || (github.ref_type == 'tag' && github.ref_name) || '2026.11.22rc1' }}
+          REF: ${{ inputs.version || (github.ref_type == 'tag' && github.ref_name) || '2026.11.22rc2' }}
         run: |
           uv run --with packaging --no-project --quiet python - <<'PY'
           import os, pathlib
