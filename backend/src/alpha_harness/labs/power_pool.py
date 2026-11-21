@@ -41,6 +41,7 @@ from .fastexpr import (
 )
 from .objectives import FAILURE
 from .params import PowerPoolParams, params_of
+from .power_pool_preflight import prefill_calls, repair_temporal_vector, select_pending
 
 if TYPE_CHECKING:  # pragma: no cover
     import asyncio
@@ -388,11 +389,20 @@ async def refill(optimizer: Optimizer, row: Study, want: int, waiting: bool) -> 
                 )
             ).all()
         )
-        batch = ready[:want] if want > 0 else []
+        run = params_of(row, PowerPoolParams)
+        llm = run.llm
+        calls = int(llm.get("calls") or 0)
+        # Sample at least two different datasets before spending the first ten
+        # simulations. Earlier versions always sent the first dataset's candidates
+        # and starved every later one under small task budgets.
+        exploring = calls < prefill_calls(row.max_trials, run.dataset_ids)
+        batch = (
+            select_pending(ready, want, str(getattr(run, "hypothesis", "")))
+            if want > 0 and not exploring
+            else []
+        )
         sent = await scheduler.send_parked(optimizer, row, batch) if batch else 0
     left = len(ready) - sent
-    llm = params_of(row, PowerPoolParams).llm
-    calls = int(llm.get("calls") or 0)
     cap = max(3, 2 * -(-row.max_trials // PER_CALL))
     stop = (
         "the last 3 LLM calls wrote no new valid Alpha"
@@ -403,7 +413,10 @@ async def refill(optimizer: Optimizer, row: Study, want: int, waiting: bool) -> 
     if (
         not stop
         and not busy
-        and left < row.batch_size
+        # Do not spend another LLM request after enough valid expressions
+        # already exist to fill the requested simulation quota.
+        and want > sent
+        and (exploring or left < want - sent)
         and time.monotonic() >= _retry.get(row.id, 0.0)
     ):
         _calls[row.id] = spawn(_write(optimizer, row.id), name=f"power-pool-{row.id}")
@@ -555,17 +568,22 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
                 text = str(item.get("expression") or "").strip()
                 number += 1
                 try:
-                    expression, used = check(text, ctx, table)
+                    candidate = repair_temporal_vector(text, ctx.types)
+                    expression, used = check(candidate, ctx, table)
                     if expression in seen:
                         raise Rejected("Already written in this task.")
                     settings = draw(rng, used, ctx, run)
                     seen.add(expression)
                     valid += 1
+                    params = {"dataset": dataset, "model": model.id}
+                    if candidate != text:
+                        # Always retain the LLM's exact original for audit.
+                        params["repairedFrom"] = text
                     session.add(
                         Trial(
                             study_id=study_id,
                             number=number,
-                            params={"dataset": dataset, "model": model.id},
+                            params=params,
                             distributions={},
                             expression=expression,
                             settings=settings,
