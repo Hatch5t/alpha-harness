@@ -313,8 +313,8 @@ function ExperimentReview({ row, refresh }: { row: Experiment; refresh: () => Pr
         {row.plan.region}/D{row.plan.delay}
         {' · '}
         {row.plan.purpose === 'power_pool' ? 'Power Pool' : 'Regular'} · Baseline{' '}
-        {row.plan.baselineIds.join(', ') || 'unavailable'} · Theme{' '}
-        {row.plan.expectedTheme ?? 'unverified'}
+        {row.plan.baselineIds.join(', ') || 'unavailable'}
+        {row.plan.expectedTheme && <span> · Theme {row.plan.expectedTheme}</span>}
       </p>
       {row.source && <TaskSelection row={row} />}
       <a href={`${BASE}/${row.id}/export`} download className="text-primary">
@@ -345,9 +345,19 @@ function ExperimentReview({ row, refresh }: { row: Experiment; refresh: () => Pr
           <p className="num text-body-compact">
             BRAIN Sharpe {number(c.sharpe)} · Fitness {number(c.fitness)} · Turnover{' '}
             {number(c.turnover)}
-            {' · '}Local pool correlation {number(c.poolCorrelation)} ({c.poolVerdict ?? 'unknown'})
-            {' · '}AMER {c.amerCheck ?? 'unknown'} · Theme {c.themeCheck ?? 'unknown'}
           </p>
+          {row.plan.purpose === 'power_pool' && (
+            <p className="num text-body-compact">
+              Local pool correlation {number(c.poolCorrelation)} ({c.poolVerdict ?? 'unknown'})
+              {' · '}Theme {c.themeCheck ?? 'unknown'}
+            </p>
+          )}
+          {row.plan.region === 'GLB' && row.plan.delay === 1 && (
+            <p className="text-body-compact">AMER {c.amerCheck ?? 'unknown'}</p>
+          )}
+          {row.plan.purpose === 'regular' && row.plan.expectedTheme && (
+            <p className="text-body-compact">Theme {c.themeCheck ?? 'unknown'}</p>
+          )}
           {c.duplicateIds.length > 0 && <p>Matching IDs {c.duplicateIds.join(', ')}</p>}
           {c.reasons.length > 0 && (
             <ul className="list-disc pl-5 text-body-compact text-ink-muted">

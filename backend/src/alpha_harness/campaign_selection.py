@@ -122,7 +122,7 @@ async def select_from_task(
 ) -> tuple[TaskSource, list[SelectionRow], list[dict[str, Any]]]:
     async with state.db.session() as session:
         trials = [
-            dict(row)
+            {str(key): value for key, value in row.items()}
             for row in (
                 await session.execute(
                     select(
