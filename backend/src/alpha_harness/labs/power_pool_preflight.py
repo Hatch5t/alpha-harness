@@ -5,11 +5,13 @@ It uses syntax to reduce redundant *mechanisms*, not to predict return or Sharpe
 Original model expressions are retained when a narrow repair is made.
 """
 
+from __future__ import annotations
+
 from collections import defaultdict
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from .fastexpr import ParseError, parse, render, replace_at, walk
+from .fastexpr import ParseError, node_at, parse, render, replace_at, walk
 
 if TYPE_CHECKING:
     from ..db.models import Trial
@@ -55,7 +57,8 @@ def repair_temporal_vector(expression: str, types: dict[str, str]) -> str:
         return expression
 
     # Work bottom-up so paths remain valid after replacing an inner subtree.
-    for path, node in reversed(walk(tree)):
+    for path, _ in reversed(walk(tree)):
+        node = node_at(tree, path)
         if node.kind != "call" or node.value not in _VECTOR_AGGREGATORS:
             continue
         if len(node.args) != 1 or node.kwargs:
