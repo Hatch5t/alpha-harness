@@ -349,7 +349,8 @@ def user_prompt(
             "PRICE AND VOLUME FIELDS · count as data fields\n"
             + "\n".join(_line(f) for f in ctx.basics),
             "GROUPING_FIELDS FIELDS · not counted\n" + ", ".join(ctx.groups),
-            f"RESEARCH HYPOTHESIS\n{run.hypothesis.strip() or 'Explore independent mechanisms supported by the selected fields.'}",
+            "RESEARCH HYPOTHESIS\n"
+            + (run.hypothesis.strip() or "Explore independent mechanisms supported by the selected fields."),
             f"YOUR EARLIER ALPHAS ON {ctx.id}\n{memory}",
             f"Write {PER_CALL} new Power Pool Alphas that use {ctx.id}.",
         ]
