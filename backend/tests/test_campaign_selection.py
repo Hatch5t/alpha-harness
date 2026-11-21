@@ -13,13 +13,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+
 from alpha_harness.api.deps import get_state
 from alpha_harness.campaign_review import ExperimentPlan, review_candidates
 from alpha_harness.db.models import CampaignExperiment, Study, StudyStatus, Trial, TrialState
 from alpha_harness.db.sqlite import Database
 from alpha_harness.main import create_app
-from fastapi.testclient import TestClient
-from sqlalchemy import func, select
 
 
 class TaskSelectionTests(unittest.IsolatedAsyncioTestCase):

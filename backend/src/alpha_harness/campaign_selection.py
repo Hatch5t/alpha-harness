@@ -152,7 +152,7 @@ async def select_from_task(
         key for row in await state.alphas.submitted_members() if (key := _fingerprint(row))
     }
     scores: list[tuple[SelectionRow, str | None]] = []
-    for chunk in itertools.batched(ids, CHUNK_SIZE):
+    for chunk in itertools.batched(ids, CHUNK_SIZE, strict=False):
         stored, series = await asyncio.gather(
             state.alphas.by_ids(list(chunk)), state.alphas.series(list(chunk))
         )

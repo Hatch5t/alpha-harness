@@ -111,8 +111,8 @@ export function ResearchReview() {
         <h2 className="text-title font-semibold">Research review</h2>
         <p className="text-body-compact text-ink-muted">
           Save your economic mechanism, shortlist, baseline and validation dates before evaluating
-          Vault results. A completed lab task can select its shortlist on discovery data. BRAIN checks can already
-          include those dates.
+          Vault results. A completed lab task can select its shortlist on discovery data. BRAIN
+          checks can already include those dates.
         </p>
         <form
           className="flex flex-col gap-3"
@@ -134,7 +134,11 @@ export function ResearchReview() {
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1">
               Candidates from
-              <select className={INPUT} value={fromTask ? 'task' : 'manual'} onChange={(e) => setFromTask(e.target.value === 'task')}>
+              <select
+                className={INPUT}
+                value={fromTask ? 'task' : 'manual'}
+                onChange={(e) => setFromTask(e.target.value === 'task')}
+              >
                 <option value="manual">Alpha IDs</option>
                 <option value="task">Completed lab task</option>
               </select>
@@ -144,19 +148,42 @@ export function ResearchReview() {
                 <label className="flex flex-col gap-1">
                   Completed task
                   <select className={INPUT} name="task" required defaultValue="">
-                    <option value="" disabled>Choose a task</option>
-                    {tasks.data?.tasks.filter((t) => t.status === 'COMPLETE').map((t) => (
-                      <option key={t.id} value={t.id}>{t.id} · {t.name ?? t.templateName ?? t.labName} · {t.region}/D{t.delay}</option>
-                    ))}
+                    <option value="" disabled>
+                      Choose a task
+                    </option>
+                    {tasks.data?.tasks
+                      .filter((t) => t.status === 'COMPLETE')
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.id} · {t.name ?? t.templateName ?? t.labName} · {t.region}/D{t.delay}
+                        </option>
+                      ))}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1">
                   Shortlist size
-                  <input className={INPUT} name="shortlist" type="number" min="1" max="6" defaultValue="3" required />
+                  <input
+                    className={INPUT}
+                    name="shortlist"
+                    type="number"
+                    min="1"
+                    max="6"
+                    defaultValue="3"
+                    required
+                  />
                 </label>
                 <label className="flex flex-col gap-1">
                   Maximum absolute discovery correlation
-                  <input className={INPUT} name="correlation" type="number" min="0.01" max="1" step="0.01" defaultValue="0.5" required />
+                  <input
+                    className={INPUT}
+                    name="correlation"
+                    type="number"
+                    min="0.01"
+                    max="1"
+                    step="0.01"
+                    defaultValue="0.5"
+                    required
+                  />
                 </label>
               </>
             ) : (
@@ -167,15 +194,27 @@ export function ResearchReview() {
             )}
             <label className="flex flex-col gap-1">
               Region
-              <input className={INPUT} name="region" defaultValue="GLB" pattern="[A-Z]{2,8}" required />
+              <input
+                className={INPUT}
+                name="region"
+                defaultValue="GLB"
+                pattern="[A-Z]{2,8}"
+                required
+              />
             </label>
             <label className="flex flex-col gap-1">
               Delay
-              <select className={INPUT} name="delay" defaultValue="1"><option value="1">D1</option><option value="0">D0</option></select>
+              <select className={INPUT} name="delay" defaultValue="1">
+                <option value="1">D1</option>
+                <option value="0">D0</option>
+              </select>
             </label>
             <label className="flex flex-col gap-1">
               Research purpose
-              <select className={INPUT} name="purpose"><option value="power_pool">Power Pool</option><option value="regular">Regular alpha</option></select>
+              <select className={INPUT} name="purpose">
+                <option value="power_pool">Power Pool</option>
+                <option value="regular">Regular alpha</option>
+              </select>
             </label>
             <label className="flex flex-col gap-1">
               Submitted portfolio baseline IDs, up to 24
@@ -224,8 +263,12 @@ export function ResearchReview() {
               Freeze research plan
             </Button>
           </div>
-          {fromTask && tasks.isError && <ErrorNotice error={tasks.error} title="Tasks unavailable" />}
-          <Link to="/tasks" className="text-primary">Research tasks and simulations</Link>
+          {fromTask && tasks.isError && (
+            <ErrorNotice error={tasks.error} title="Tasks unavailable" />
+          )}
+          <Link to="/tasks" className="text-primary">
+            Research tasks and simulations
+          </Link>
         </form>
         {freeze.isError && <ErrorNotice error={freeze.error} title="Could not freeze plan" />}
         {history.isError && (
@@ -267,12 +310,15 @@ function ExperimentReview({ row, refresh }: { row: Experiment; refresh: () => Pr
         {row.plan.embargoDays} day embargo · {row.plan.costBps} bps
       </p>
       <p className="text-body-compact text-ink-muted">
-        {row.plan.region}/D{row.plan.delay} · {row.plan.purpose === 'power_pool' ? 'Power Pool' : 'Regular'} ·{' '}
-        Baseline {row.plan.baselineIds.join(', ') || 'unavailable'} · Theme{' '}
+        {row.plan.region}/D{row.plan.delay}  {' '}
+        {row.plan.purpose === 'power_pool' ? 'Power Pool' : 'Regular'} · Baseline{' '}
+        {row.plan.baselineIds.join(', ') || 'unavailable'} · Theme{' '}
         {row.plan.expectedTheme ?? 'unverified'}
       </p>
       {row.source && <TaskSelection row={row} />}
-      <a href={`${BASE}/${row.id}/export`} download className="text-primary">Export experiment history</a>
+      <a href={`${BASE}/${row.id}/export`} download className="text-primary">
+        Export experiment history
+      </a>
       {!row.plan.candidateIds.length && <p>No candidate survived discovery selection.</p>}
       {!row.review && row.plan.candidateIds.length > 0 && (
         <div>
@@ -362,7 +408,13 @@ function ExperimentReview({ row, refresh }: { row: Experiment; refresh: () => Pr
 
 interface SelectionPage {
   total: number
-  results: { alphaId: string; discoverySharpe: number | null; selected: boolean; reason: string | null; discoveryCorrelation: number | null }[]
+  results: {
+    alphaId: string
+    discoverySharpe: number | null
+    selected: boolean
+    reason: string | null
+    discoveryCorrelation: number | null
+  }[]
 }
 
 function TaskSelection({ row }: { row: Experiment }) {
@@ -370,40 +422,77 @@ function TaskSelection({ row }: { row: Experiment }) {
   const [offset, setOffset] = useState(0)
   const selection = useQuery({
     queryKey: ['campaign', 'selection', row.id, offset],
-    queryFn: ({ signal }) => http.get<SelectionPage>(`${BASE}/${row.id}/selection${qs({ offset })}`, signal),
+    queryFn: ({ signal }) =>
+      http.get<SelectionPage>(`${BASE}/${row.id}/selection${qs({ offset })}`, signal),
     enabled: opened,
   })
   if (!row.source) return null
   return (
     <div className="flex flex-col gap-2">
-      <Link to="/tasks/$taskId" params={{ taskId: String(row.source.taskId) }} className="text-primary">
+      <Link
+        to="/tasks/$taskId"
+        params={{ taskId: String(row.source.taskId) }}
+        className="text-primary"
+      >
         {row.source.name}
       </Link>
       <p className="num text-body-compact">
-        {row.source.totalTrials} trials · {row.source.uniqueAlphas} distinct alphas · {row.source.selected} selected
+        {row.source.totalTrials} trials · {row.source.uniqueAlphas} distinct alphas ·{' '}
+        {row.source.selected} selected
       </p>
       <p className="text-body-compact text-ink-muted">{row.source.selectionNote}</p>
-      {Object.entries(row.source.rejections).map(([reason, count]) => <p key={reason}>{count} · {reason}</p>)}
-      {Object.entries(row.source.trialFailures).map(([reason, count]) => <p key={reason}>{count} failed trials · {reason}</p>)}
-      <div><Button onClick={() => setOpened(!opened)}>{opened ? 'Hide selection history' : 'Selection history'}</Button></div>
-      {opened && selection.isError && <ErrorNotice error={selection.error} title="Selection history unavailable" />}
+      {Object.entries(row.source.rejections).map(([reason, count]) => (
+        <p key={reason}>
+          {count} · {reason}
+        </p>
+      ))}
+      {Object.entries(row.source.trialFailures).map(([reason, count]) => (
+        <p key={reason}>
+          {count} failed trials · {reason}
+        </p>
+      ))}
+      <div>
+        <Button onClick={() => setOpened(!opened)}>
+          {opened ? 'Hide selection history' : 'Selection history'}
+        </Button>
+      </div>
+      {opened && selection.isError && (
+        <ErrorNotice error={selection.error} title="Selection history unavailable" />
+      )}
       {opened && selection.data && (
         <>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-body-compact">
-              <thead><tr><th>Alpha</th><th>Discovery Sharpe</th><th>Discovery correlation</th><th>Selection</th></tr></thead>
-              <tbody>{selection.data.results.map((item) => (
-                <tr key={item.alphaId}>
-                  <td>{item.alphaId}</td><td className="num">{number(item.discoverySharpe)}</td>
-                  <td className="num">{number(item.discoveryCorrelation)}</td>
-                  <td>{item.selected ? 'Selected' : item.reason}</td>
+              <thead>
+                <tr>
+                  <th>Alpha</th>
+                  <th>Discovery Sharpe</th>
+                  <th>Discovery correlation</th>
+                  <th>Selection</th>
                 </tr>
-              ))}</tbody>
+              </thead>
+              <tbody>
+                {selection.data.results.map((item) => (
+                  <tr key={item.alphaId}>
+                    <td>{item.alphaId}</td>
+                    <td className="num">{number(item.discoverySharpe)}</td>
+                    <td className="num">{number(item.discoveryCorrelation)}</td>
+                    <td>{item.selected ? 'Selected' : item.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
           </div>
           <div className="flex gap-2">
-            <Button disabled={offset === 0} onClick={() => setOffset(offset - 30)}>Previous</Button>
-            <Button disabled={offset + 30 >= selection.data.total} onClick={() => setOffset(offset + 30)}>Next</Button>
+            <Button disabled={offset === 0} onClick={() => setOffset(offset - 30)}>
+              Previous
+            </Button>
+            <Button
+              disabled={offset + 30 >= selection.data.total}
+              onClick={() => setOffset(offset + 30)}
+            >
+              Next
+            </Button>
           </div>
         </>
       )}

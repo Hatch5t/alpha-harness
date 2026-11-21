@@ -610,7 +610,9 @@ class CampaignExperiment(Base):
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     plan: Mapped[dict[str, Any]] = mapped_column(JSON)
     source: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    selection: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True, deferred=True)
+    selection: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True, deferred=True
+    )
     provenance: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True, deferred=True)
     source_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
