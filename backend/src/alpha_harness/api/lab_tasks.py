@@ -520,7 +520,7 @@ async def power_pool_workflow(body: AlphaIds, state: State) -> WorkflowStarted:
         failed = await state.backfill.fetch_each(
             task, await state.alphas.lacking_pnl(need), state.backfill.fetch_pnl, what="PnL"
         )
-        found = await _power_pool(state, judged)
+        found = await local_power_pool(state, judged)
         passed = [r.alpha_id for r in found.rows if r.verdict in SATISFIED]
         failed += await state.backfill.fetch_each(
             task,
@@ -641,7 +641,7 @@ async def stop_prod_correlation(state: State) -> None:
 @router.post("/power-pool-correlation")
 async def power_pool_correlation_for(body: AlphaIds, state: State) -> PowerPoolCorrelation:
     """The same measurement over an explicit set of Alphas, for the panes that span tasks."""
-    return await _power_pool(state, body.alpha_ids)
+    return await local_power_pool(state, body.alpha_ids)
 
 
 class SubmissionPick(Out):
@@ -877,7 +877,7 @@ async def _pool_members(state: State) -> dict[str, dict[str, Any]]:
     return {a: r for a, r in submitted.items() if power_pool.is_power_pool(r)}
 
 
-async def _power_pool(state: State, alpha_ids: list[str]) -> PowerPoolCorrelation:
+async def local_power_pool(state: State, alpha_ids: list[str]) -> PowerPoolCorrelation:
     """Correlate these Alphas against the submitted Power Pool, region by region."""
     pool_meta = await _pool_members(state)
     stored = await state.alphas.by_ids(list(dict.fromkeys(alpha_ids)))

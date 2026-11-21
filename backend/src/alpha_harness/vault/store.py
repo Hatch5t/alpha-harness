@@ -793,6 +793,7 @@ class AlphaVault:
                    a.sharpe, a.turnover, a.fitness, a.returns, a.drawdown, a.margin,
                    a.long_count, a.short_count, a.prod_correlation, a.self_correlation,
                    a.neutralization, a.decay, a.truncation, a.expression, a.operator_count,
+                   a.language, a.sim_type,
                    a.train_sharpe, a.test_sharpe,
                    (
                        SELECT p.alpha_id FROM alpha p

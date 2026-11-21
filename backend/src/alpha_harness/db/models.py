@@ -599,3 +599,33 @@ class LLMModel(Base):
     # An index rather than a table constraint, so a database that already has the table
     # gains it on startup: SQLite cannot add a constraint to a live table.
     __table_args__ = (Index("uq_llm_model_provider_model", "provider", "model", unique=True),)
+
+
+class CampaignExperiment(Base):
+    """The frozen research design and candidate shortlist, stored locally."""
+
+    __tablename__ = "campaign_experiment"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    plan: Mapped[dict[str, Any]] = mapped_column(JSON)
+    source: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    selection: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True, deferred=True
+    )
+    provenance: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True, deferred=True)
+    source_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    __table_args__ = (Index("uq_campaign_source_key", "source_key", unique=True),)
+
+
+class CampaignReview(Base):
+    """An immutable snapshot of one evaluation and any subsequent human review."""
+
+    __tablename__ = "campaign_review"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    experiment_id: Mapped[int] = mapped_column(ForeignKey("campaign_experiment.id"), unique=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    evidence: Mapped[dict[str, Any]] = mapped_column(JSON)
+    decision: Mapped[dict[str, Any] | None] = mapped_column(JSON(none_as_null=True), nullable=True)

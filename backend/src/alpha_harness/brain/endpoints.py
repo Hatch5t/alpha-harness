@@ -381,7 +381,9 @@ class BrainEndpoints:
         """
         r = await self.client.request_retrying("GET", "/users/self/activities/pyramid-multipliers")
         items = r.body.get("pyramids") if isinstance(r.body, dict) else None
-        return items if isinstance(items, list) else []
+        if not isinstance(items, list):
+            raise BrainError("BRAIN returned an invalid pyramid multiplier response.")
+        return items
 
     async def pyramid_alphas(self, start_date: str, end_date: str) -> list[dict[str, Any]]:
         """``{category, region, delay, alphaCount}`` submitted between two ISO dates."""
@@ -391,7 +393,9 @@ class BrainEndpoints:
             params={"startDate": start_date, "endDate": end_date},
         )
         items = r.body.get("pyramids") if isinstance(r.body, dict) else None
-        return items if isinstance(items, list) else []
+        if not isinstance(items, list):
+            raise BrainError("BRAIN returned an invalid pyramid activity response.")
+        return items
 
     #: A region's datasets take eight to sixteen seconds, longer than the client's
     #: ordinary timeout allows for. BRAIN itself gives up at thirty with a 504.
@@ -405,12 +409,16 @@ class BrainEndpoints:
         has to be built from.
         """
         body = (await self.client.request_retrying("GET", SUBMISSIONS_PATH)).body
-        rows = ((body or {}).get("records") or {}).get("records") or []
-        return [
-            (str(r[0]), int(r[1]))
-            for r in rows
-            if isinstance(r, list) and len(r) >= 2 and str(r[1]).lstrip("-").isdigit()
-        ]
+        envelope = body.get("records") if isinstance(body, dict) else None
+        rows = envelope.get("records") if isinstance(envelope, dict) else None
+        if not isinstance(rows, list):
+            raise BrainError("BRAIN returned an invalid submission activity response.")
+        results: list[tuple[str, int]] = []
+        for row in rows:
+            if not isinstance(row, list) or len(row) < 2 or not str(row[1]).isdigit():
+                raise BrainError("BRAIN returned an invalid submission activity row.")
+            results.append((str(row[0]), int(row[1])))
+        return results
 
     async def list_data_sets_all(self, **params: Any) -> list[DataSet]:
         """Every dataset matching a scope, however partial that scope is.

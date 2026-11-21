@@ -203,6 +203,12 @@ const sync = createRoute({
   component: lazyRouteComponent(() => import('@/screens/sync'), 'SyncScreen'),
 })
 
+const campaign = createRoute({
+  getParentRoute: () => root,
+  path: '/campaign',
+  component: lazyRouteComponent(() => import('@/screens/campaign'), 'CampaignScreen'),
+})
+
 const pyramids = createRoute({
   getParentRoute: () => root,
   path: '/pyramids',
@@ -223,6 +229,7 @@ const routeTree = root.addChildren([
   alpha,
   ai.addChildren([aiIndex, aiTab, aiThread]),
   pyramids,
+  campaign,
   sync,
 ])
 

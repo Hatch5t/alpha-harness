@@ -91,7 +91,6 @@ def correlate(
             {p: float(rho[row_of[alpha_id], j]) for j, p in enumerate(right)}
             if alpha_id in row_of
             else {},
-            at,
             ceiling,
         )
         for alpha_id in candidates
@@ -144,7 +143,6 @@ def _judge(
     meta: dict[str, dict[str, Any]],
     against: list[str],
     values: dict[str, float],
-    stored: dict[str, int],
     ceiling: float,
 ) -> dict[str, Any]:
     """The verdict from the pairs measured, ``values`` by pool member. Only pairs both sides of
@@ -152,7 +150,7 @@ def _judge(
     says what it was judged against."""
     usable = [(p, v) for p in against if (v := values.get(p)) is not None and not np.isnan(v)]
     found = _verdict(alpha_id, meta, usable, len(against), ceiling)
-    if found["verdict"] != "blocked" and any(p not in stored for p in against):
+    if found["verdict"] != "blocked" and len(usable) < len(against):
         found["verdict"] = "unmeasured"
     return found
 
@@ -204,7 +202,7 @@ def submission_order(
 
     def judge(alpha_id: str, region: str) -> dict[str, Any]:
         against = [p for p in pool.get(region, []) if p != alpha_id]
-        return _judge(alpha_id, meta, against, values[alpha_id], at, ceiling)
+        return _judge(alpha_id, meta, against, values[alpha_id], ceiling)
 
     for region in {r for r in region_of.values() if r}:
         members = [p for p in pool.get(region, []) if p in at]
