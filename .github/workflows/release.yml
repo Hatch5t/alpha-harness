@@ -25,6 +25,7 @@ name: release
 on:
   push:
     tags: ["v*"]
+    branches: ["codex/macos-research-build"]
   workflow_dispatch:
     inputs:
       version:
@@ -73,7 +74,7 @@ jobs:
         id: version
         shell: bash
         env:
-          REF: ${{ inputs.version || github.ref_name }}
+          REF: ${{ inputs.version || (github.ref_type == 'tag' && github.ref_name) || '2026.11.22rc1' }}
         run: |
           uv run --with packaging --no-project --quiet python - <<'PY'
           import os, pathlib
@@ -178,6 +179,7 @@ jobs:
       # Built into the app (see build.rs): what it installs on a fresh machine, and what it
       # tells the app it is.
       ALPHA_HARNESS_VERSION: ${{ needs.wheel.outputs.version }}
+      ALPHA_HARNESS_REPOSITORY: ${{ github.repository }}
       # The oldest macOS the build may need: see Build, and the check after it.
       MACOS_FLOOR: ${{ matrix.macos }}
       TARGET: ${{ matrix.target }}

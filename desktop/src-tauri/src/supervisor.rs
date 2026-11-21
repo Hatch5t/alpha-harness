@@ -34,7 +34,10 @@ pub const BUILD_VERSION: &str = match option_env!("ALPHA_HARNESS_VERSION") {
     Some(version) => version,
     None => "0.0.0",
 };
-const REPOSITORY: &str = "residual-lab/alpha-harness";
+const REPOSITORY: &str = match option_env!("ALPHA_HARNESS_REPOSITORY") {
+    Some(repository) => repository,
+    None => "residual-lab/alpha-harness",
+};
 const REPOSITORY_VARIABLE: &str = "ALPHA_HARNESS_REPOSITORY";
 
 const HOME_VARIABLE: &str = "ALPHA_HARNESS_HOME";
@@ -136,12 +139,15 @@ fn root() -> &'static Path {
     ROOT.get_or_init(home)
 }
 
-fn download() -> String {
-    let repository = std::env::var(REPOSITORY_VARIABLE)
+fn repository() -> String {
+    std::env::var(REPOSITORY_VARIABLE)
         .ok()
         .filter(|r| !r.is_empty())
-        .unwrap_or_else(|| REPOSITORY.to_owned());
-    format!("https://github.com/{repository}/releases/download")
+        .unwrap_or_else(|| REPOSITORY.to_owned())
+}
+
+fn download() -> String {
+    format!("https://github.com/{}/releases/download", repository())
 }
 
 // --- the log ---------------------------------------------------------------------------------
@@ -738,6 +744,7 @@ fn start(app: &AppHandle, slot: &str) -> i32 {
         .args(["-m", "alpha_harness"])
         .env(HOME_VARIABLE, root())
         .env(LAUNCHER_VARIABLE, BUILD_VERSION)
+        .env(REPOSITORY_VARIABLE, repository())
         .env(PID_VARIABLE, std::process::id().to_string())
         .env(SHELL_VARIABLE, "tauri")
         .env("PYTHONUTF8", "1")
