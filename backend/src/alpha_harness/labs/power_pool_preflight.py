@@ -141,7 +141,9 @@ def select_pending(ready: list[Trial], want: int, hypothesis: str) -> list[Trial
         dataset = str((trial.params or {}).get("dataset") or "unknown")
         buckets[dataset].append(trial)
     for candidates in buckets.values():
-        candidates.sort(key=lambda trial: (-_priority(trial.expression or "", hypothesis), trial.number))
+        candidates.sort(
+            key=lambda trial: (-_priority(trial.expression or "", hypothesis), trial.number)
+        )
 
     datasets = sorted(buckets)
     selected: list[Trial] = []
