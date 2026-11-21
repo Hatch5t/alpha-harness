@@ -243,10 +243,7 @@ class TaskSelectionTests(unittest.IsolatedAsyncioTestCase):
         await catalog.upsert(
             "alpha",
             ("alpha_id", "region", "delay", "simulation_mode", "expression", "status"),
-            [
-                (f"quick{i}", "GLB", 1, "QUICK", f"rank(field{i})", "UNSUBMITTED")
-                for i in range(10)
-            ],
+            [(f"quick{i}", "GLB", 1, "QUICK", f"rank(field{i})", "UNSUBMITTED") for i in range(10)],
         )
         # Quick results can carry no PnL at all, or PnL without turnover.
         await catalog.replace_pnl("quick0", [("quick0", date(2024, 1, 1), 12.0, None)])
