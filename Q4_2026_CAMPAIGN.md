@@ -1,7 +1,8 @@
 # Q4 2026 BRAIN Research Campaign
 
-The Q4 Campaign page at `/campaign` tracks quarterly activity and lets you review GLB
-D1 Power Pool candidates already stored in Alpha Vault. November 22 is the
+The Q4 Campaign page at `/campaign` tracks quarterly activity and lets you review
+Power Pool and regular-alpha candidates stored in Alpha Vault, for the selected
+region and delay. November 22 is the
 planning deadline from the campaign slides. Check signed-in BRAIN for the active
 theme, cutoff time and current eligibility.
 
@@ -13,23 +14,39 @@ theme, cutoff time and current eligibility.
 | Expert planning targets | Provisional slide figures of 20 signals and 10 pyramids. |
 | Genius combined performance and official standing | Signed-in BRAIN dashboard. |
 
-## Power Pool research review
+## Research review
 
 1. Sync your GLB D1 catalog and choose a market on the campaign page. Choose USA D1
    explicitly for USA field research.
 2. Record the economic mechanism and expected direction. Use Template Lab or Power
    Pool Lab to prepare a small simulation batch. Save the results and daily PnL
    with turnover to the Vault. Use Portfolio to sync submitted baseline alphas.
-3. Freeze up to six candidate IDs, up to 24 submitted baseline IDs, the validation
-   dates, calendar-day embargo, trading cost and exact theme name or ID.
+3. Enter candidate IDs or choose a completed lab task. Set the research purpose,
+   region and delay. Freeze the validation dates, calendar-day embargo, cost, up to
+   24 submitted baseline IDs and, when relevant, the exact BRAIN theme. Task selection
+   keeps up to six candidates, ranked by discovery Sharpe. Its default absolute
+   correlation ceiling is 0.5, following the existing Evolution Lab. It requires
+   250 common discovery observations to establish pairwise diversification. These
+   are local research settings.
 4. Evaluate the stored evidence after the window closes. Plans saved before the
    validation start are marked prospective. The shortlist is ranked by discovery Sharpe alone.
    Discovery ends before the embargo and validation period. Review after-cost Sharpe,
-   common-date equal-weight portfolio delta, exact-expression duplicates, the stored
-   BRAIN AMER and theme checks, and local Power Pool correlation. Each Sharpe
+   common-date equal-weight portfolio delta, exact-expression duplicates, and
+   applicable stored BRAIN checks. GLB D1 retains its AMER check. Power Pool
+   reviews include exact-theme matching and local pool correlation. Regular
+   reviews use the selected market and its stored submission checks. Each Sharpe
    calculation requires at least 60 usable observations.
 5. Save a rejection or approve an eligible candidate for manual review. Check current
    BRAIN rules and checks before any manual submission.
+
+Task selection records successful, failed and repeated trials, per-alpha selection
+reasons, its configuration, and the shortlist. A missing Vault metadata or PnL row
+asks for a sync before selection. An empty shortlist still produces a rejection
+report. Retrying the same task and research design returns the saved experiment.
+Use Selection history to page through results and Export experiment history to
+download the inputs, trial expressions, settings, selection and review as JSON.
+The stored history survives deletion of its original task. PnL is read in batches
+of 200 alphas, and only up to six selected series are kept for diversification.
 
 The evaluation records one snapshot per experiment. Later downloads do not rewrite
 it. The date split shows performance on a user-selected period. Its out-of-sample
@@ -39,7 +56,9 @@ those dates. The portfolio delta is a local estimate at the specified cost and
 weights. The exact-expression screen covers the shortlist and synced submissions,
 including syntax-normalized Fast Expressions.
 
-The review calls no LLM, simulation, tagging or submission endpoint. The existing
+Run simulations through the existing Labs and Tasks controls. Creating or evaluating
+a research review reads local results. It calls no LLM, simulation, tagging or
+submission endpoint. The existing
 Labs retain their own provider and budget controls. Cross-region stability automation,
 a dedicated Python comparison, AQP descriptions and verified ARC, Osmosis and SPC
 tracking remain follow-up work.
@@ -80,5 +99,7 @@ uvx lefthook@2.1.14 run check
 uvx lefthook@2.1.14 run build
 ```
 
-The tests cover the date split, common-date portfolio comparison, partial BRAIN
-availability, market selection, additive database setup, and persisted review.
+The tests cover discovery and validation isolation, positive and negative correlation
+filters, incomplete pair measurements, empty shortlists, retries, old database
+migrations, export after task deletion, partial BRAIN availability, market-specific
+checks, common-date portfolio comparison and persisted human review.

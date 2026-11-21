@@ -2,14 +2,25 @@
 
 import asyncio
 from datetime import datetime
+from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 
 from ..brain.filters import PLATFORM_TZ
 from ..campaign_review import CandidateEvidence, ExperimentPlan, ReviewDecision, review_candidates
-from ..db.models import CampaignExperiment, CampaignReview, utcnow
+from ..campaign_selection import (
+    SelectionNotReady,
+    SelectionPage,
+    TaskReviewRequest,
+    TaskSource,
+    request_key,
+    select_from_task,
+)
+from ..db.models import CampaignExperiment, CampaignReview, Study, StudyStatus, utcnow
+from ..labs.params import TASK_SAMPLERS
 from ..schemas import Out
 from .deps import State, refuse
 from .lab_tasks import local_power_pool
@@ -32,6 +43,7 @@ class Experiment(Out):
     created_at: datetime
     plan: ExperimentPlan
     prospective: bool
+    source: TaskSource | None = None
     review: ReviewSnapshot | None = None
 
 
@@ -48,6 +60,7 @@ def _experiment(row: CampaignExperiment, review: CampaignReview | None = None) -
         created_at=row.created_at,
         plan=plan,
         prospective=row.created_at.astimezone(PLATFORM_TZ).date() < plan.validation_start,
+        source=TaskSource.model_validate(row.source) if row.source else None,
         review=_snapshot(review) if review else None,
     )
 
@@ -70,6 +83,8 @@ async def history(state: State, before: int | None = None) -> list[Experiment]:
 @router.post("", status_code=201)
 async def freeze(plan: ExperimentPlan, state: State) -> Experiment:
     """Freeze a shortlist and its portfolio comparison before asking for a report."""
+    if not plan.candidate_ids:
+        raise refuse(422, "candidates_empty", "Choose at least one candidate alpha.")
     ids = [*plan.candidate_ids, *plan.baseline_ids]
     stored = await state.alphas.by_ids(ids)
     if missing := [a for a in ids if a not in stored]:
@@ -81,6 +96,100 @@ async def freeze(plan: ExperimentPlan, state: State) -> Experiment:
         session.add(row)
         await session.flush()
         return _experiment(row)
+
+
+@router.post("/from-task", status_code=201)
+async def from_task(body: TaskReviewRequest, state: State) -> Experiment:
+    """Freeze discovery-only selection from an existing, completed research-lab task."""
+    key = request_key(body)
+    async with state.optimizer.lock(body.task_id):
+        async with state.db.session() as session:
+            existing = await session.scalar(
+                select(CampaignExperiment).where(CampaignExperiment.source_key == key)
+            )
+            if existing:
+                return _experiment(existing)
+            study = await session.get(Study, body.task_id)
+            if study is None:
+                raise refuse(404, "task_missing", "The research task was not found.")
+            if study.sampler not in TASK_SAMPLERS or study.status != StudyStatus.COMPLETE:
+                raise refuse(409, "task_unfinished", "Complete the research-lab task first.")
+        baseline = await state.alphas.by_ids(body.baseline_ids)
+        if any(not baseline.get(a, {}).get("date_submitted") for a in body.baseline_ids):
+            raise refuse(422, "baseline_invalid", "Sync every submitted baseline alpha first.")
+        try:
+            source, rows, trials = await select_from_task(state, body, study)
+        except SelectionNotReady as exc:
+            raise refuse(422, "selection_incomplete", str(exc)) from exc
+        plan = ExperimentPlan(
+            **body.model_dump(exclude={"task_id", "shortlist_size", "max_discovery_correlation"}),
+            candidate_ids=[row.alpha_id for row in rows if row.selected],
+        )
+        async with state.db.session() as session:
+            row = CampaignExperiment(
+                plan=plan.model_dump(mode="json"),
+                source_key=key,
+                source=source.model_dump(mode="json"),
+                provenance={
+                    "configuration": {
+                        "template": study.template_source,
+                        "params": study.sampler_params,
+                        "seed": study.seed,
+                        "maxTrials": study.max_trials,
+                    },
+                    "trials": trials,
+                },
+                selection=[item.model_dump(mode="json") for item in rows],
+            )
+            session.add(row)
+            await session.flush()
+            return _experiment(row)
+
+
+@router.get("/{experiment_id}/selection")
+async def selection(
+    experiment_id: int,
+    state: State,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 30,
+) -> SelectionPage:
+    async with state.db.session() as session:
+        row = (
+            await session.execute(
+                select(CampaignExperiment.selection).where(CampaignExperiment.id == experiment_id)
+            )
+        ).first()
+    if row is None:
+        raise refuse(404, "experiment_missing", "Research experiment was not found.")
+    rows = row[0] or []
+    return SelectionPage(total=len(rows), results=rows[offset : offset + limit])
+
+
+@router.get("/{experiment_id}/export")
+async def export_experiment(experiment_id: int, state: State) -> JSONResponse:
+    """Export the local inputs, trial history, selection and recorded review together."""
+    async with state.db.session() as session:
+        row = await session.get(CampaignExperiment, experiment_id)
+        if row is None:
+            raise refuse(404, "experiment_missing", "Research experiment was not found.")
+        provenance, selection_rows = (
+            await session.execute(
+                select(CampaignExperiment.provenance, CampaignExperiment.selection).where(
+                    CampaignExperiment.id == experiment_id
+                )
+            )
+        ).one()
+        review = await session.scalar(
+            select(CampaignReview).where(CampaignReview.experiment_id == experiment_id)
+        )
+        content = _experiment(row, review).model_dump(mode="json") | {
+            "provenance": provenance,
+            "selection": selection_rows,
+        }
+    return JSONResponse(
+        content,
+        headers={"Content-Disposition": f'attachment; filename="experiment-{experiment_id}.json"'},
+    )
 
 
 @router.post("/{experiment_id}/evaluate")
@@ -100,11 +209,15 @@ async def evaluate(experiment_id: int, state: State) -> ReviewSnapshot:
         raise refuse(422, "open_validation", "Evaluate after the validation end date has passed.")
 
     ids = [*plan.candidate_ids, *plan.baseline_ids]
-    stored, submitted, series, pool = await asyncio.gather(
+    stored, submitted, series = await asyncio.gather(
         state.alphas.by_ids(ids),
         state.alphas.submitted_members(),
         state.alphas.series(ids),
-        local_power_pool(state, plan.candidate_ids),
+    )
+    pool = (
+        await local_power_pool(state, plan.candidate_ids)
+        if plan.purpose == "power_pool" and plan.candidate_ids
+        else None
     )
     candidates = await asyncio.to_thread(
         review_candidates,
@@ -112,7 +225,7 @@ async def evaluate(experiment_id: int, state: State) -> ReviewSnapshot:
         stored,
         submitted,
         series,
-        {r.alpha_id: r.model_dump() for r in pool.rows},
+        {r.alpha_id: r.model_dump() for r in pool.rows} if pool else {},
     )
     try:
         async with state.db.session() as session:

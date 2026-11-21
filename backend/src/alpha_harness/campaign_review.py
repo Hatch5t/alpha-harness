@@ -17,10 +17,12 @@ AlphaId = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[a-
 type Series = dict[str, dict[date, tuple[float, float]]]
 
 
-class ExperimentPlan(Out):
+class ResearchDesign(Out):
     hypothesis: str = Field(min_length=12, max_length=4000)
-    candidate_ids: list[AlphaId] = Field(min_length=1, max_length=6)
     baseline_ids: list[AlphaId] = Field(default_factory=list, max_length=24)
+    region: str = Field(default="GLB", pattern=r"^[A-Z]{2,8}$")
+    delay: int = Field(default=1, ge=0, le=1)
+    purpose: Literal["power_pool", "regular"] = "power_pool"
     validation_start: date
     validation_end: date
     embargo_days: int = Field(default=5, ge=0, le=365)
@@ -29,15 +31,25 @@ class ExperimentPlan(Out):
 
     @model_validator(mode="after")
     def validate_design(self) -> Self:
-        ids = self.candidate_ids + self.baseline_ids
-        if len(set(ids)) != len(ids):
-            raise ValueError("Use each alpha ID once across candidates and baseline.")
+        if len(set(self.baseline_ids)) != len(self.baseline_ids):
+            raise ValueError("Use each baseline alpha ID once.")
         if (self.validation_end - self.validation_start).days < MIN_WINDOW_ROWS - 1:
             raise ValueError("The validation window must allow at least 60 observations.")
         if self.validation_start <= date.min + timedelta(days=self.embargo_days):
             raise ValueError("The embargo would place discovery outside the supported calendar.")
         if not self.hypothesis.strip():
             raise ValueError("An economic hypothesis is required.")
+        return self
+
+
+class ExperimentPlan(ResearchDesign):
+    candidate_ids: list[AlphaId] = Field(max_length=6)
+
+    @model_validator(mode="after")
+    def validate_candidates(self) -> Self:
+        ids = self.candidate_ids + self.baseline_ids
+        if len(set(ids)) != len(ids):
+            raise ValueError("Use each alpha ID once across candidates and baseline.")
         return self
 
 
@@ -124,8 +136,8 @@ def review_candidates(
             out.reasons.append("Expression matches a submitted or shortlisted alpha.")
         if yields.is_submitted(row) or row.get("date_submitted") is not None:
             out.reasons.append("Candidate is already submitted.")
-        if (row.get("region"), row.get("delay")) != ("GLB", 1):
-            out.reasons.append("Candidate is outside GLB D1.")
+        if (row.get("region"), row.get("delay")) != (plan.region, plan.delay):
+            out.reasons.append(f"Candidate is outside {plan.region} D{plan.delay}.")
         checks = yields.checks_of(row.get("checks"))
         if yields.verdict(checks, row.get("simulation_mode")) != "submittable":
             out.reasons.append("Stored BRAIN submission checks are incomplete or refused.")
@@ -138,7 +150,7 @@ def review_candidates(
             )
         amer = next((c for c in checks if c.get("name") == "LOW_GLB_AMER_SHARPE"), {})
         out.amer_check = amer.get("result")
-        if out.amer_check != "PASS":
+        if plan.region == "GLB" and plan.delay == 1 and out.amer_check != "PASS":
             out.reasons.append("AMER Sharpe check has no recorded PASS.")
         expected = (plan.expected_theme or "").strip().casefold()
         for check in checks:
@@ -154,12 +166,12 @@ def review_candidates(
             ):
                 out.theme_check = check.get("result")
                 break
-        if out.theme_check != "PASS":
+        if (plan.expected_theme or plan.purpose == "power_pool") and out.theme_check != "PASS":
             out.reasons.append("The planned BRAIN theme has no stored PASS.")
         pool = pool_rows.get(alpha_id, {})
         out.pool_correlation = _figure(pool.get("correlation"))
         out.pool_verdict = pool.get("verdict")
-        if out.pool_verdict not in {"clear", "beats"}:
+        if plan.purpose == "power_pool" and out.pool_verdict not in {"clear", "beats"}:
             out.reasons.append("Local Power Pool orthogonality is unmeasured or blocked.")
         _review_windows(plan, out, series)
 
@@ -170,12 +182,17 @@ def review_candidates(
     return evidence
 
 
+def discovery_sharpe(design: ResearchDesign, alpha_id: str, series: Series) -> float | None:
+    """Selection uses only finite observations before validation and its embargo."""
+    end = design.validation_start - timedelta(days=design.embargo_days)
+    days = sorted(day for day in _finite_days(series.get(alpha_id, {})) if day < end)
+    return _sharpe(series, [alpha_id], days, design.cost_bps)
+
+
 def _review_windows(plan: ExperimentPlan, out: CandidateEvidence, series: Series) -> None:
     candidate = out.alpha_id
     candidate_days = _finite_days(series.get(candidate, {}))
-    discovery_end = plan.validation_start - timedelta(days=plan.embargo_days)
-    discovery = sorted(d for d in candidate_days if d < discovery_end)
-    out.discovery_sharpe = _sharpe(series, [candidate], discovery, plan.cost_bps)
+    out.discovery_sharpe = discovery_sharpe(plan, candidate, series)
     validation = {d for d in candidate_days if plan.validation_start <= d <= plan.validation_end}
     out.holdout_days = len(validation)
     out.holdout_sharpe = _sharpe(series, [candidate], sorted(validation), plan.cost_bps)

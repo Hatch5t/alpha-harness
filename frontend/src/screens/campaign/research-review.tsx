@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { http, qs } from '@/api/http'
+import { labTasks } from '@/screens/tasks/api'
 import { Button, ErrorNotice, Panel } from '@/ui/kit'
 
 interface Candidate {
@@ -27,6 +28,16 @@ interface Experiment {
   id: number
   createdAt: string
   prospective: boolean
+  source: {
+    taskId: number
+    name: string
+    totalTrials: number
+    uniqueAlphas: number
+    selected: number
+    rejections: Record<string, number>
+    trialFailures: Record<string, number>
+    selectionNote: string
+  } | null
   plan: {
     hypothesis: string
     candidateIds: string[]
@@ -36,6 +47,9 @@ interface Experiment {
     embargoDays: number
     costBps: number
     expectedTheme: string | null
+    region: string
+    delay: number
+    purpose: 'power_pool' | 'regular'
   }
   review: {
     candidates: Candidate[]
@@ -53,23 +67,38 @@ const number = (value: number | null) => value?.toFixed(2) ?? '—'
 
 export function ResearchReview() {
   const [before, setBefore] = useState<number>()
+  const [fromTask, setFromTask] = useState(false)
   const query = useQueryClient()
   const history = useQuery({
     queryKey: ['campaign', 'experiments', before],
     queryFn: ({ signal }) => http.get<Experiment[]>(`${BASE}${qs({ before })}`, signal),
   })
   const refresh = () => query.invalidateQueries({ queryKey: ['campaign', 'experiments'] })
+  const tasks = useQuery({
+    queryKey: ['campaign', 'completed-tasks'],
+    queryFn: labTasks.list,
+    enabled: fromTask,
+  })
   const freeze = useMutation({
     mutationFn: (data: FormData) =>
-      http.post<Experiment>(BASE, {
+      http.post<Experiment>(fromTask ? `${BASE}/from-task` : BASE, {
         hypothesis: data.get('hypothesis'),
-        candidateIds: alphaIds(data.get('candidates')),
+        ...(fromTask
+          ? {
+              taskId: Number(data.get('task')),
+              shortlistSize: Number(data.get('shortlist')),
+              maxDiscoveryCorrelation: Number(data.get('correlation')),
+            }
+          : { candidateIds: alphaIds(data.get('candidates')) }),
         baselineIds: alphaIds(data.get('baseline')),
         validationStart: data.get('start'),
         validationEnd: data.get('end'),
         expectedTheme: String(data.get('theme') ?? '').trim() || null,
         embargoDays: Number(data.get('embargo')),
         costBps: Number(data.get('cost')),
+        region: data.get('region'),
+        delay: Number(data.get('delay')),
+        purpose: data.get('purpose'),
       }),
     onSuccess: () => {
       setBefore(undefined)
@@ -79,10 +108,10 @@ export function ResearchReview() {
   return (
     <Panel>
       <div className="flex flex-col gap-4">
-        <h2 className="text-title font-semibold">Power Pool research review</h2>
+        <h2 className="text-title font-semibold">Research review</h2>
         <p className="text-body-compact text-ink-muted">
           Save your economic mechanism, shortlist, baseline and validation dates before evaluating
-          Vault results. Use an untouched validation window. Full-period BRAIN checks can already
+          Vault results. A completed lab task can select its shortlist on discovery data. BRAIN checks can already
           include those dates.
         </p>
         <form
@@ -104,8 +133,49 @@ export function ResearchReview() {
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1">
-              Candidate alpha IDs, up to six
-              <input className={INPUT} name="candidates" required />
+              Candidates from
+              <select className={INPUT} value={fromTask ? 'task' : 'manual'} onChange={(e) => setFromTask(e.target.value === 'task')}>
+                <option value="manual">Alpha IDs</option>
+                <option value="task">Completed lab task</option>
+              </select>
+            </label>
+            {fromTask ? (
+              <>
+                <label className="flex flex-col gap-1">
+                  Completed task
+                  <select className={INPUT} name="task" required defaultValue="">
+                    <option value="" disabled>Choose a task</option>
+                    {tasks.data?.tasks.filter((t) => t.status === 'COMPLETE').map((t) => (
+                      <option key={t.id} value={t.id}>{t.id} · {t.name ?? t.templateName ?? t.labName} · {t.region}/D{t.delay}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  Shortlist size
+                  <input className={INPUT} name="shortlist" type="number" min="1" max="6" defaultValue="3" required />
+                </label>
+                <label className="flex flex-col gap-1">
+                  Maximum absolute discovery correlation
+                  <input className={INPUT} name="correlation" type="number" min="0.01" max="1" step="0.01" defaultValue="0.5" required />
+                </label>
+              </>
+            ) : (
+              <label className="flex flex-col gap-1">
+                Candidate alpha IDs, up to six
+                <input className={INPUT} name="candidates" required />
+              </label>
+            )}
+            <label className="flex flex-col gap-1">
+              Region
+              <input className={INPUT} name="region" defaultValue="GLB" pattern="[A-Z]{2,8}" required />
+            </label>
+            <label className="flex flex-col gap-1">
+              Delay
+              <select className={INPUT} name="delay" defaultValue="1"><option value="1">D1</option><option value="0">D0</option></select>
+            </label>
+            <label className="flex flex-col gap-1">
+              Research purpose
+              <select className={INPUT} name="purpose"><option value="power_pool">Power Pool</option><option value="regular">Regular alpha</option></select>
             </label>
             <label className="flex flex-col gap-1">
               Submitted portfolio baseline IDs, up to 24
@@ -154,6 +224,8 @@ export function ResearchReview() {
               Freeze research plan
             </Button>
           </div>
+          {fromTask && tasks.isError && <ErrorNotice error={tasks.error} title="Tasks unavailable" />}
+          <Link to="/tasks" className="text-primary">Research tasks and simulations</Link>
         </form>
         {freeze.isError && <ErrorNotice error={freeze.error} title="Could not freeze plan" />}
         {history.isError && (
@@ -195,10 +267,14 @@ function ExperimentReview({ row, refresh }: { row: Experiment; refresh: () => Pr
         {row.plan.embargoDays} day embargo · {row.plan.costBps} bps
       </p>
       <p className="text-body-compact text-ink-muted">
+        {row.plan.region}/D{row.plan.delay} · {row.plan.purpose === 'power_pool' ? 'Power Pool' : 'Regular'} ·{' '}
         Baseline {row.plan.baselineIds.join(', ') || 'unavailable'} · Theme{' '}
         {row.plan.expectedTheme ?? 'unverified'}
       </p>
-      {!row.review && (
+      {row.source && <TaskSelection row={row} />}
+      <a href={`${BASE}/${row.id}/export`} download className="text-primary">Export experiment history</a>
+      {!row.plan.candidateIds.length && <p>No candidate survived discovery selection.</p>}
+      {!row.review && row.plan.candidateIds.length > 0 && (
         <div>
           <Button disabled={evaluate.isPending} onClick={() => evaluate.mutate()}>
             Evaluate stored evidence
@@ -280,6 +356,57 @@ function ExperimentReview({ row, refresh }: { row: Experiment; refresh: () => Pr
         </form>
       )}
       {decide.isError && <ErrorNotice error={decide.error} title="Decision was not recorded" />}
+    </div>
+  )
+}
+
+interface SelectionPage {
+  total: number
+  results: { alphaId: string; discoverySharpe: number | null; selected: boolean; reason: string | null; discoveryCorrelation: number | null }[]
+}
+
+function TaskSelection({ row }: { row: Experiment }) {
+  const [opened, setOpened] = useState(false)
+  const [offset, setOffset] = useState(0)
+  const selection = useQuery({
+    queryKey: ['campaign', 'selection', row.id, offset],
+    queryFn: ({ signal }) => http.get<SelectionPage>(`${BASE}/${row.id}/selection${qs({ offset })}`, signal),
+    enabled: opened,
+  })
+  if (!row.source) return null
+  return (
+    <div className="flex flex-col gap-2">
+      <Link to="/tasks/$taskId" params={{ taskId: String(row.source.taskId) }} className="text-primary">
+        {row.source.name}
+      </Link>
+      <p className="num text-body-compact">
+        {row.source.totalTrials} trials · {row.source.uniqueAlphas} distinct alphas · {row.source.selected} selected
+      </p>
+      <p className="text-body-compact text-ink-muted">{row.source.selectionNote}</p>
+      {Object.entries(row.source.rejections).map(([reason, count]) => <p key={reason}>{count} · {reason}</p>)}
+      {Object.entries(row.source.trialFailures).map(([reason, count]) => <p key={reason}>{count} failed trials · {reason}</p>)}
+      <div><Button onClick={() => setOpened(!opened)}>{opened ? 'Hide selection history' : 'Selection history'}</Button></div>
+      {opened && selection.isError && <ErrorNotice error={selection.error} title="Selection history unavailable" />}
+      {opened && selection.data && (
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-body-compact">
+              <thead><tr><th>Alpha</th><th>Discovery Sharpe</th><th>Discovery correlation</th><th>Selection</th></tr></thead>
+              <tbody>{selection.data.results.map((item) => (
+                <tr key={item.alphaId}>
+                  <td>{item.alphaId}</td><td className="num">{number(item.discoverySharpe)}</td>
+                  <td className="num">{number(item.discoveryCorrelation)}</td>
+                  <td>{item.selected ? 'Selected' : item.reason}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <div className="flex gap-2">
+            <Button disabled={offset === 0} onClick={() => setOffset(offset - 30)}>Previous</Button>
+            <Button disabled={offset + 30 >= selection.data.total} onClick={() => setOffset(offset + 30)}>Next</Button>
+          </div>
+        </>
+      )}
     </div>
   )
 }
