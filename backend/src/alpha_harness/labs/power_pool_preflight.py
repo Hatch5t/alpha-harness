@@ -92,9 +92,7 @@ def _profile(expression: str) -> tuple[str, frozenset[str]]:
         tree = parse(expression)
     except ParseError:
         return "unparsed", frozenset()
-    calls = frozenset(
-        node.value for _, node in walk(tree) if node.kind == "call"
-    )
+    calls = frozenset(node.value for _, node in walk(tree) if node.kind == "call")
     # Prefer a meaningful economic mechanism over an incidental outer rank().
     for operator, family in (
         ("ts_delta", "revision"),
