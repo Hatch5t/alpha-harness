@@ -82,7 +82,8 @@ WHAT TO WRITE
 - Honor the supplied research hypothesis when given. For revision, persistence or \
 acceleration hypotheses, construct a time-aware change or normalization of the appropriate \
 point-in-time field rather than simply ranking its current level. If a field does not measure \
-the proposed mechanism, do not pretend that it does.\n- Vary the idea, not only the numbers: a level or its change; against its own history (ts_rank, \
+the proposed mechanism, do not pretend that it does.
+- Vary the idea, not only the numbers: a level or its change; against its own history (ts_rank, \
 ts_zscore, ts_delta); against peers (group_rank, group_neutralize); one field against another \
 (ratio, difference, ts_corr); a condition that switches a signal (trade_when, ?:); smoothing.
 - One, two or three fields are all fine, and so are short Alphas.
