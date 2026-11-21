@@ -13,6 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import httpx2
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
@@ -55,8 +56,7 @@ class TaskSelectionTests(unittest.IsolatedAsyncioTestCase):
         first = date(2022, 1, 1)
         self.series = {
             key: {
-                first
-                + timedelta(days=i): (
+                first + timedelta(days=i): (
                     means[key] + (math.cos(i / 3) if key == "weak" else math.sin(i)),
                     0.01,
                 )
@@ -168,6 +168,24 @@ class TaskSelectionTests(unittest.IsolatedAsyncioTestCase):
             page = self.client.get(f"/api/campaign/experiments/{result['id']}/selection").json()
             result["scores"] = [row["discoverySharpe"] for row in page["results"]]
         self.assertEqual(first["scores"], second["scores"])
+
+    async def test_concurrent_retries_share_one_frozen_selection(self) -> None:
+        async with httpx2.AsyncClient(
+            transport=httpx2.ASGITransport(app=self.client.app), base_url="http://localhost"
+        ) as client:
+            responses = await asyncio.gather(
+                client.post(
+                    "/api/campaign/experiments/from-task", json=self.body, headers=self.headers
+                ),
+                client.post(
+                    "/api/campaign/experiments/from-task", json=self.body, headers=self.headers
+                ),
+            )
+        self.assertTrue(all(response.status_code == 201 for response in responses))
+        self.assertEqual(responses[0].json()["id"], responses[1].json()["id"])
+        async with self.db.session() as session:
+            total = await session.scalar(select(func.count()).select_from(CampaignExperiment))
+        self.assertEqual(total, 2)
 
     async def test_missing_data_waits_and_unfinished_task_is_refused(self) -> None:
         self.series.pop("weak")

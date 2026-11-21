@@ -310,7 +310,8 @@ function ExperimentReview({ row, refresh }: { row: Experiment; refresh: () => Pr
         {row.plan.embargoDays} day embargo · {row.plan.costBps} bps
       </p>
       <p className="text-body-compact text-ink-muted">
-        {row.plan.region}/D{row.plan.delay}  {' '}
+        {row.plan.region}/D{row.plan.delay}
+        {' · '}
         {row.plan.purpose === 'power_pool' ? 'Power Pool' : 'Regular'} · Baseline{' '}
         {row.plan.baselineIds.join(', ') || 'unavailable'} · Theme{' '}
         {row.plan.expectedTheme ?? 'unverified'}
