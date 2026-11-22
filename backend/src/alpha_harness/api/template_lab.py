@@ -7,7 +7,7 @@ every lab's task, only runs from the Tasks tab.
 
 import asyncio
 import contextlib
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -47,6 +47,7 @@ from ..labs.launch import (
     synced_universes,
 )
 from ..labs.params import TEMPLATE_SAMPLER, TemplateParams
+from ..labs.template_document import FieldsVariable, TemplateBody, ValuesVariable, Variable
 from ..schemas import Out
 from .deps import State, refuse
 
@@ -56,35 +57,6 @@ ORIGIN = "template-lab"
 LIMITS = [POWER_POOL_MAX_OPERATORS, POWER_POOL_MAX_FIELDS]
 #: A saved template's document: its text and its variables.
 DOC_VERSION = 2
-
-
-class FieldsVariable(BaseModel):
-    """A variable whose values are data fields: the chosen datasets', narrowed by a filter."""
-
-    kind: Literal["fields"]
-    dataset_ids: list[str] = Field(default_factory=list, max_length=500)
-    #: The Data Explorer's filter, for anything beyond the datasets: Region Exclusive,
-    #: coverage, field types. Field types left out follow where the template writes it.
-    filter: FieldFilter | None = None
-    #: With matrix and vector fields both searched: what a vector field is reduced with.
-    vector_operators: list[str] = Field(default_factory=list, max_length=20)
-
-
-class ValuesVariable(BaseModel):
-    """A variable whose values are typed: numbers, groups, operator names or expressions."""
-
-    kind: Literal["values"]
-    values: str = Field(default="", max_length=4000)
-
-
-Variable = Annotated[FieldsVariable | ValuesVariable, Field(discriminator="kind")]
-
-
-class TemplateBody(BaseModel):
-    name: str = Field(min_length=1, max_length=128)
-    description: str | None = Field(default=None, max_length=500)
-    text: str = Field(default="", max_length=template.MAX_TEXT)
-    variables: dict[str, Variable] = Field(default_factory=dict, max_length=64)
 
 
 class TemplateTask(BaseModel):
