@@ -95,6 +95,29 @@ def _plain_reason(exc: Exception) -> str | None:
     return None
 
 
+def _provider_category(exc: Exception) -> str:
+    """Small, non-sensitive failure taxonomy; never store provider response bodies."""
+    status = _status(exc)
+    detail = str(exc).lower()
+    if status == 400:
+        if "schema" in detail or "response_format" in detail:
+            return "schema_rejected"
+        if "max_tokens" in detail or "max_completion_tokens" in detail:
+            return "output_limit_rejected"
+        if "temperature" in detail:
+            return "temperature_rejected"
+        return "bad_request"
+    if status in (401, 403):
+        return "access_refused"
+    if status == 404:
+        return "model_unavailable"
+    if status == 429:
+        return "rate_limited"
+    if status is not None and status >= 500:
+        return "provider_unavailable"
+    return "transport_or_unknown"
+
+
 def _rejects_temperature(exc: Exception) -> bool:
     """A 400 about the temperature: the model takes none but its own default."""
     return _status(exc) == 400 and "temperature" in str(exc).lower()
