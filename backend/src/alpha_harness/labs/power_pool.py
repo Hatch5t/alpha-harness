@@ -599,6 +599,7 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
                     model_ref=model.ref,
                     response_schema=SCHEMA,
                     temperature=1.0,
+                    max_provider_attempts=1 if run.pilot else None,
                 )
             except BudgetExhaustedError as exc:
                 spent.append(exc)
