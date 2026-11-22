@@ -89,8 +89,10 @@ class BoundedProviderAttemptTests(unittest.IsolatedAsyncioTestCase):
         )
         service.ledger = SimpleNamespace(penalise=AsyncMock(), record_tokens=AsyncMock())
         client = SimpleNamespace(generate=AsyncMock(side_effect=ProviderError(status, detail)))
-        with patch.object(LLMService, "_client", return_value=client):
-            with self.assertRaises(LLMError) as caught:
+        with (
+            patch.object(LLMService, "_client", return_value=client),
+            self.assertRaises(LLMError) as caught,
+        ):
                 await service.generate(
                     system="test",
                     user="test",
