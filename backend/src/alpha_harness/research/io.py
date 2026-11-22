@@ -34,6 +34,63 @@ must go straight into a supported vector reducer before scalar/time operators. D
 credentials, external tools or unknown fields. No alpha is submission-ready from a Quick result.
 """
 
+# Provider-facing schema deliberately omits Pydantic's $defs/$ref, titles, defaults,
+# and length constraints. These are validated locally by Generated.model_validate;
+# the provider is only asked to return the right structural shape. Gemini's
+# OpenAI-compatibility endpoint does not uniformly accept every JSON Schema keyword.
+_STR = {"type": "string"}
+_STRINGS = {"type": "array", "items": {"type": "string"}}
+_HYPOTHESIS_PROPERTIES: dict[str, Any] = {
+    "mechanism": _STR,
+    "family": _STR,
+    "direction": _STR,
+    "horizon": _STR,
+    "assumptions": _STRINGS,
+    "fieldsRequired": _STRINGS,
+    "riskFactors": _STRINGS,
+    "failureRegimes": _STRINGS,
+    "falsificationTests": _STRINGS,
+    "independence": _STR,
+    "estimatedSimulations": {"type": "integer"},
+}
+GENERATION_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "hypotheses": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": _HYPOTHESIS_PROPERTIES,
+                "required": [
+                    "mechanism",
+                    "family",
+                    "direction",
+                    "horizon",
+                    "assumptions",
+                    "fieldsRequired",
+                    "riskFactors",
+                    "failureRegimes",
+                    "falsificationTests",
+                    "independence",
+                ],
+            },
+        },
+        "alphas": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "expression": _STR,
+                    "hypothesis": {"type": "integer"},
+                },
+                "required": ["expression", "hypothesis"],
+            },
+        },
+    },
+    "required": ["hypotheses", "alphas"],
+}
+
+
 SYNTHETIC_OPERATORS = [
     {"name": "rank", "definition": "rank(x)"},
     {"name": "ts_delta", "definition": "ts_delta(x, d)"},
@@ -324,7 +381,7 @@ class ResearchIO:
                 system=SYSTEM,
                 user=prompt,
                 model_ref=spec.model,
-                response_schema=Generated.model_json_schema(),
+                response_schema=GENERATION_RESPONSE_SCHEMA,
                 temperature=1.0,
                 max_provider_attempts=1,
                 max_output_tokens=spec.max_output_tokens,
