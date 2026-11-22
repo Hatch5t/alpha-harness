@@ -174,4 +174,3 @@ def select_pending(
         counts[dataset] += 1
         families.add((dataset, _profile(chosen.expression or "")[0]))
     return selected
-

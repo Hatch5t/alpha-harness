@@ -34,9 +34,16 @@ OPERATORS = [
 def context(dataset: str) -> Context:
     name = f"field_{dataset}"
     return Context(
-        id=dataset, name=dataset, category="Synthetic", description="Tests only.",
-        fields=(Field(name, "MATRIX", 1.0, "", None),), basics=(), groups=(),
-        types={name: "MATRIX"}, own=frozenset({name}), names=frozenset({name}),
+        id=dataset,
+        name=dataset,
+        category="Synthetic",
+        description="Tests only.",
+        fields=(Field(name, "MATRIX", 1.0, "", None),),
+        basics=(),
+        groups=(),
+        types={name: "MATRIX"},
+        own=frozenset({name}),
+        names=frozenset({name}),
         held={name: frozenset({"TOP3000"})},
     )
 
@@ -53,13 +60,17 @@ class PowerPoolRuntimeTests(unittest.IsolatedAsyncioTestCase):
             enqueue=AsyncMock(
                 side_effect=lambda requests, **_: {"outcomes": [{} for _ in requests]}
             ),
-            drop_queued=AsyncMock(return_value=0), set_quota=AsyncMock(), slots=8,
+            drop_queued=AsyncMock(return_value=0),
+            set_quota=AsyncMock(),
+            slots=8,
         )
-        self.model = ModelInfo(id="synthetic", provider="google", rpm=10, rpd=10,
-                               reset_timezone="UTC")
+        self.model = ModelInfo(
+            id="synthetic", provider="google", rpm=10, rpd=10, reset_timezone="UTC"
+        )
         self.llm = SimpleNamespace(
             registry=SimpleNamespace(get=lambda _: self.model),
-            runnable=AsyncMock(return_value=[]), generate=AsyncMock(),
+            runnable=AsyncMock(return_value=[]),
+            generate=AsyncMock(),
         )
         self.optimizer = self.new_optimizer()
         self.contexts = AsyncMock(side_effect=lambda *args: context(args[4]))
@@ -73,13 +84,23 @@ class PowerPoolRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(power_pool._retry.clear)
         async with self.db.session() as session:
             row = Study(
-                name="synthetic-runtime", sampler=POWER_POOL_SAMPLER,
-                template_source="", sampler_params=PowerPoolParams(
-                    region="GLB", delay=1, cores=1, universes=["TOP3000"],
-                    neutralizations=["INDUSTRY"], dataset_ids=["A", "B"],
-                    model=self.model.ref, only_model=True,
+                name="synthetic-runtime",
+                sampler=POWER_POOL_SAMPLER,
+                template_source="",
+                sampler_params=PowerPoolParams(
+                    region="GLB",
+                    delay=1,
+                    cores=1,
+                    universes=["TOP3000"],
+                    neutralizations=["INDUSTRY"],
+                    dataset_ids=["A", "B"],
+                    model=self.model.ref,
+                    only_model=True,
                     hypothesis="Forecast revisions persist over time.",
-                ).dump(), objectives=["sharpe"], max_trials=20, batch_size=10,
+                ).dump(),
+                objectives=["sharpe"],
+                max_trials=20,
+                batch_size=10,
                 status=StudyStatus.RUNNING,
             )
             session.add(row)
@@ -88,9 +109,12 @@ class PowerPoolRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     def new_optimizer(self) -> Optimizer:
         optimizer = Optimizer(
-            self.db, self.engine, SimpleNamespace(),
+            self.db,
+            self.engine,
+            SimpleNamespace(),
             SimpleNamespace(cached_operators=AsyncMock(return_value=OPERATORS)),
-            on_change=AsyncMock(), alphas=SimpleNamespace(catalog=None),
+            on_change=AsyncMock(),
+            alphas=SimpleNamespace(catalog=None),
         )
         optimizer.llm = self.llm
         return optimizer
@@ -99,9 +123,15 @@ class PowerPoolRuntimeTests(unittest.IsolatedAsyncioTestCase):
         dataset = self.contexts.call_args.args[4]
         self.assertIn("Forecast revisions persist", kwargs["user"])
         return SimpleNamespace(
-            text=json.dumps({"alphas": [
-                {"expression": f"rank(ts_delta(field_{dataset}, {i + 1}))"} for i in range(20)
-            ]}), total_tokens=10,
+            text=json.dumps(
+                {
+                    "alphas": [
+                        {"expression": f"rank(ts_delta(field_{dataset}, {i + 1}))"}
+                        for i in range(20)
+                    ]
+                }
+            ),
+            total_tokens=10,
         )
 
     async def write_once(self) -> None:
@@ -110,9 +140,13 @@ class PowerPoolRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def rows(self) -> list[Trial]:
         async with self.db.session() as session:
-            return list((await session.scalars(
-                select(Trial).where(Trial.study_id == self.study_id).order_by(Trial.number)
-            )).all())
+            return list(
+                (
+                    await session.scalars(
+                        select(Trial).where(Trial.study_id == self.study_id).order_by(Trial.number)
+                    )
+                ).all()
+            )
 
     async def test_two_dataset_prefill_then_dispatch_does_not_generate_again(self) -> None:
         self.llm.generate.side_effect = self.generate
@@ -148,9 +182,21 @@ class PowerPoolRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_budget_block_is_persisted_and_ready_work_is_not_stranded(self) -> None:
         self.llm.generate.side_effect = self.generate
         await self.write_once()
-        error = BudgetExhaustedError(self.model, [Headroom(
-            1, self.model.id, 10, 10, 0, 10, "requests_per_day", 3600,
-        )])
+        error = BudgetExhaustedError(
+            self.model,
+            [
+                Headroom(
+                    1,
+                    self.model.id,
+                    10,
+                    10,
+                    0,
+                    10,
+                    "requests_per_day",
+                    3600,
+                )
+            ],
+        )
         self.llm.generate.side_effect = error
         await self.write_once()
         row = await self.optimizer.get(self.study_id)
@@ -217,8 +263,9 @@ class PowerPoolRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.llm.generate.await_count, 1)
 
     async def test_insufficient_prompt_budget_pauses_without_provider_request(self) -> None:
-        small = ModelInfo(id="small", provider="google", rpm=10, rpd=10,
-                          reset_timezone="UTC", max_prompt_tokens=1)
+        small = ModelInfo(
+            id="small", provider="google", rpm=10, rpd=10, reset_timezone="UTC", max_prompt_tokens=1
+        )
         self.llm.registry.get = lambda _: small
         await self.write_once()
         self.llm.generate.assert_not_awaited()
@@ -244,8 +291,10 @@ class PowerPoolRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.llm.generate.await_count, 2)
 
     def test_more_datasets_than_slots_do_not_starve_on_repeated_windows(self) -> None:
-        ready = [SimpleNamespace(number=i, params={"dataset": f"D{i:02}"}, expression="rank(x)")
-                 for i in range(13)]
+        ready = [
+            SimpleNamespace(number=i, params={"dataset": f"D{i:02}"}, expression="rank(x)")
+            for i in range(13)
+        ]
         allocated = {}
         for _ in range(13):
             selected = select_pending(ready, 1, "", allocated)
@@ -256,9 +305,13 @@ class PowerPoolRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     def test_ambiguous_vector_repairs_are_refused_without_formatting_changes(self) -> None:
         for text in [
-            "vec_avg(ts_delta(v, other))", "vec_avg(ts_delta(v, 0))",
-            "vec_avg(ts_delta(v, 2.5))", "vec_avg(ts_delta(v, 20, other))",
-            "vec_avg(ts_delta(v, d=20))", "vec_avg(v + other)", " rank(vec_avg(v)) ",
+            "vec_avg(ts_delta(v, other))",
+            "vec_avg(ts_delta(v, 0))",
+            "vec_avg(ts_delta(v, 2.5))",
+            "vec_avg(ts_delta(v, 20, other))",
+            "vec_avg(ts_delta(v, d=20))",
+            "vec_avg(v + other)",
+            " rank(vec_avg(v)) ",
         ]:
             with self.subTest(text=text):
                 self.assertEqual(repair_temporal_vector(text, {"v": "VECTOR"}), text)

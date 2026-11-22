@@ -157,23 +157,36 @@ class PowerPoolPreflightTests(unittest.TestCase):
 
     def test_vector_preflight_rejects_raw_vectors_and_matrix_reduction(self) -> None:
         ctx = Context(
-            id="synthetic", name="Synthetic", category="", description="", fields=(),
-            basics=(), groups=(), types={"v": "VECTOR", "m": "MATRIX"},
-            own=frozenset({"v", "m"}), names=frozenset({"v", "m"}), held={},
+            id="synthetic",
+            name="Synthetic",
+            category="",
+            description="",
+            fields=(),
+            basics=(),
+            groups=(),
+            types={"v": "VECTOR", "m": "MATRIX"},
+            own=frozenset({"v", "m"}),
+            names=frozenset({"v", "m"}),
+            held={},
         )
         table = {
             name: OperatorInfo(name, "", count, count, params)
             for name, count, params in [
-                ("rank", 1, ("x",)), ("vec_avg", 1, ("x",)),
+                ("rank", 1, ("x",)),
+                ("vec_avg", 1, ("x",)),
                 ("ts_delta", 2, ("x", "d")),
             ]
         }
-        for text in ["rank(v)", "ts_delta(v, 20)", "vec_avg(v + m)",
-                     "vec_avg(ts_delta(m, 20))", "vec_avg(vec_avg(v))"]:
+        for text in [
+            "rank(v)",
+            "ts_delta(v, 20)",
+            "vec_avg(v + m)",
+            "vec_avg(ts_delta(m, 20))",
+            "vec_avg(vec_avg(v))",
+        ]:
             with self.subTest(text=text), self.assertRaises(Rejected):
                 check(repair_temporal_vector(text, ctx.types), ctx, table)
 
 
 if __name__ == "__main__":
     unittest.main()
-

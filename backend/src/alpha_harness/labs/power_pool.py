@@ -441,7 +441,9 @@ async def refill(optimizer: Optimizer, row: Study, want: int, waiting: bool) -> 
                     .where(Trial.study_id == row.id, Trial.state != TrialState.PRUNED)
                     .group_by(dataset)
                 )
-            ).tuples().all()
+            )
+            .tuples()
+            .all()
         )
         batch = (
             select_pending(ready, want, run.hypothesis, allocated)
@@ -580,7 +582,8 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
         else:
             if prompt_refused == len(models):
                 return await _pause(
-                    optimizer, study_id,
+                    optimizer,
+                    study_id,
                     "No dataset fields fit the configured prompt budget. "
                     "Increase Max Prompt Tokens, then resume.",
                 )
@@ -594,7 +597,9 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
                     "The task carries on when the first one resets."
                 )
                 await _note(
-                    optimizer, study_id, f"Waiting for LLM budget: {reason}",
+                    optimizer,
+                    study_id,
+                    f"Waiting for LLM budget: {reason}",
                     retry_after=max(5.0, min(e.retry_after for e in spent)),
                 )
                 return None
@@ -727,4 +732,3 @@ def parse_alphas(text: str) -> list[dict[str, Any]]:
         if isinstance(payload, list):
             return [a for a in payload if isinstance(a, dict) and a.get("expression")]
     return []
-

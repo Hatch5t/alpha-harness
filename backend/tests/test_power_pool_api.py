@@ -24,8 +24,13 @@ class PowerPoolApiTests(unittest.IsolatedAsyncioTestCase):
             catalog=None,
         )
         body = power_pool_lab.PowerPoolRequest(
-            region="GLB", delay=1, universe="TOP3000", dataset_ids=["A", "B"],
-            neutralizations=["INDUSTRY"], cores=1, simulations=10,
+            region="GLB",
+            delay=1,
+            universe="TOP3000",
+            dataset_ids=["A", "B"],
+            neutralizations=["INDUSTRY"],
+            cores=1,
+            simulations=10,
             hypothesis="Forecast revisions persist over time.",
             favour_operators=["ts_delta", "unavailable_operator"],
         )
@@ -33,9 +38,13 @@ class PowerPoolApiTests(unittest.IsolatedAsyncioTestCase):
             patch.object(
                 power_pool_lab, "account_operators", new=AsyncMock(return_value=OPERATORS)
             ),
-            patch.object(power_pool_lab, "legal_choices", return_value={
-                "neutralization": {"choices": [{"value": "INDUSTRY"}]},
-            }),
+            patch.object(
+                power_pool_lab,
+                "legal_choices",
+                return_value={
+                    "neutralization": {"choices": [{"value": "INDUSTRY"}]},
+                },
+            ),
             patch.object(
                 power_pool_lab, "synced_universes", new=AsyncMock(return_value=["TOP3000"])
             ),
@@ -43,7 +52,8 @@ class PowerPoolApiTests(unittest.IsolatedAsyncioTestCase):
                 power_pool_lab.power_pool, "context_for", new=AsyncMock(return_value=context("A"))
             ),
             patch.object(
-                power_pool_lab, "add_study",
+                power_pool_lab,
+                "add_study",
                 new=AsyncMock(return_value=AddedTask(id=1, name="synthetic")),
             ) as add,
         ):
