@@ -23,6 +23,7 @@ from ..labs.launch import (
     synced_universes,
 )
 from ..labs.params import POWER_POOL_SAMPLER, PowerPoolParams
+from ..labs.pilot import MAX_FULL, MAX_LLM, MAX_QUICK
 from ..llm.prompts import POWER_POOL_LAB
 from ..llm.text import estimate_tokens
 from ..schemas import Out
@@ -49,6 +50,8 @@ class PowerPoolRequest(BaseModel):
     field_filter: FieldFilter | None = None
     hypothesis: str = Field(default="", max_length=4000)
     favour_operators: list[str] = Field(default_factory=list, max_length=30)
+    #: Explicit opt-in: persisted ceilings, never enabled for historical tasks.
+    controlled_pilot: bool = False
 
 
 class PowerPoolModel(Out):
@@ -96,6 +99,13 @@ async def options(state: State) -> PowerPoolOptions:
 async def _plan(body: PowerPoolRequest, state: Any) -> dict[str, Any]:
     problems: list[str] = []
     warnings: list[str] = []
+    if body.controlled_pilot:
+        if body.simulations > MAX_QUICK:
+            problems.append(f"Controlled pilot allows at most {MAX_QUICK} Quick simulations.")
+        if body.cores != 1:
+            problems.append("Controlled pilot uses exactly one core.")
+        if not body.only_model:
+            problems.append("Controlled pilot requires 'Only use this model' to be enabled.")
     operators = await account_operators(state, refresh=False)
     if not operators:
         problems.append(OPERATORS_UNREAD)
@@ -147,6 +157,9 @@ async def _plan(body: PowerPoolRequest, state: Any) -> dict[str, Any]:
         neutralizations=neutralizations,
         hypothesis=body.hypothesis,
         favour_operators=body.favour_operators,
+        pilot=body.controlled_pilot,
+        pilot_full_cap=MAX_FULL if body.controlled_pilot else 0,
+        pilot_llm_cap=MAX_LLM if body.controlled_pilot else 0,
     )
     if universes:
         for dataset in body.dataset_ids:
@@ -183,6 +196,11 @@ async def _plan(body: PowerPoolRequest, state: Any) -> dict[str, Any]:
         -(-body.simulations // power_pool.PER_CALL),
         power_pool.prefill_calls(body.simulations, body.dataset_ids),
     )
+    if body.controlled_pilot and calls > MAX_LLM:
+        problems.append(
+            f"Controlled pilot allows at most {MAX_LLM} model requests; "
+            "reduce datasets or the simulation count."
+        )
     left = models[info.ref]["remainingToday"] if info and info.ref in models else None
     if info is not None and left is not None and calls > left:
         warnings.append(
@@ -234,6 +252,9 @@ async def add_task(body: PowerPoolRequest, state: State) -> AddedTask:
             only_model=body.only_model,
             hypothesis=body.hypothesis,
             favour_operators=body.favour_operators,
+            pilot=body.controlled_pilot,
+            pilot_full_cap=MAX_FULL if body.controlled_pilot else 0,
+            pilot_llm_cap=MAX_LLM if body.controlled_pilot else 0,
             cores=body.cores,
             llm={"calls": 0},
         ),
