@@ -100,8 +100,11 @@ async def _plan(body: PowerPoolRequest, state: Any) -> dict[str, Any]:
     problems: list[str] = []
     warnings: list[str] = []
     if body.controlled_pilot:
-        if body.simulations > MAX_QUICK:
-            problems.append(f"Controlled pilot allows at most {MAX_QUICK} Quick simulations.")
+        if body.simulations != MAX_QUICK:
+            problems.append(
+                f"Controlled pilot requires exactly {MAX_QUICK} Quick simulations "
+                "to fill one BRAIN batch."
+            )
         if body.cores != 1:
             problems.append("Controlled pilot uses exactly one core.")
         if not body.only_model:
