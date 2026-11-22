@@ -380,8 +380,8 @@ class ResearchService:
                 raise ResearchError(
                     "Usage exceeded its reserved bound; this campaign cannot spend further."
                 )
-            if row.status in {"COMPLETE", "CANCELLED"}:
-                raise ResearchError("A completed or cancelled campaign cannot reset its budget.")
+            if row.status in {"COMPLETE", "CANCELLED", "FAILED"}:
+                raise ResearchError("A terminal campaign cannot reset its budget.")
             if row.mode == "live" and row.authorized_hash != spec.digest():
                 raise ResearchError(
                     "Explicit live approval of this exact configuration is required."
@@ -630,7 +630,18 @@ class ResearchService:
                         "unsupported_model_response"
                         if isinstance(exc, ValidationError)
                         else "provider_failure",
-                        {"dataset": dataset, "errorClass": type(exc).__name__},
+                        {
+                            "dataset": dataset,
+                            "errorClass": type(exc).__name__,
+                            "reasonCode": (
+                                exc.provider_category or "llm_failure_unknown"
+                                if isinstance(exc, LLMError)
+                                else "response_validation_failed"
+                            ),
+                            "httpStatus": (
+                                exc.provider_status if isinstance(exc, LLMError) else None
+                            ),
+                        },
                     )
                 await budget.observed(self.db, row.id, operation, {})
                 await self._cursor(row.id, generated=[*done, dataset])
@@ -1493,6 +1504,19 @@ class ResearchService:
                     hypothesis.status = "EVIDENCE_INCOMPLETE"
                 elif own and all(c.status == "REJECTED" for c in own):
                     hypothesis.status = "INVALID_IMPLEMENTATION"
+            failed_generation_only = False
+            if not candidates and not hypotheses:
+                kinds = list(
+                    await session.scalars(
+                        select(ResearchEvent.kind).where(
+                            ResearchEvent.campaign_id == row.id,
+                            ResearchEvent.kind.in_(
+                                ["provider_failure", "unsupported_model_response"]
+                            ),
+                        )
+                    )
+                )
+                failed_generation_only = bool(kinds)
             next_cycle = int(row.cursor["cycle"]) + 1
             improved = row.cursor.get("recommended", 0) > row.cursor.get("previous_recommended", -1)
             proceed = (
@@ -1531,11 +1555,18 @@ class ResearchService:
                     "previous_recommended": row.cursor.get("recommended", 0),
                 }
             else:
-                current.status = "COMPLETE"
-                current.cursor = current.cursor | {"stage": "COMPLETE"}
+                current.status = "FAILED" if failed_generation_only else "COMPLETE"
+                current.cursor = current.cursor | {"stage": current.status}
                 current.message = (
-                    "Research completed; recommendations require manual review. No "
-                    "alpha was submitted."
+                    "All candidate generation failed before alpha simulation. No real BRAIN "
+                    "research result was obtained. Provider attempts remain reserved; "
+                    "inspect sanitized failure codes and fix the integration before "
+                    "creating a separately approved campaign."
+                    if failed_generation_only
+                    else (
+                        "Research completed; recommendations require manual review. "
+                        "No alpha was submitted."
+                    )
                 )
                 study = await session.get(Study, row.study_id)
                 study.status, study.finished_at = StudyStatus.COMPLETE, utcnow()
