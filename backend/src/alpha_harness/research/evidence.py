@@ -17,6 +17,18 @@ if TYPE_CHECKING:
     from .schemas import CampaignSpec
 
 
+def finite_json(value: Any, issues: list[str], path: str = "") -> Any:
+    """Keep JSON structure while making nonfinite metrics explicitly missing."""
+    if isinstance(value, float) and not math.isfinite(value):
+        issues.append(path or "/")
+        return None
+    if isinstance(value, dict):
+        return {key: finite_json(item, issues, f"{path}/{key}") for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [finite_json(item, issues, f"{path}/{index}") for index, item in enumerate(value)]
+    return value
+
+
 def identities(expression: str, names: frozenset[str]) -> tuple[str, str, int]:
     tree = parse(expression)
 

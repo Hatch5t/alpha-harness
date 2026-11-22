@@ -57,6 +57,7 @@ interface Candidate {
 interface Report extends Summary {
   config: Spec
   configHash: string
+  dataQuality: { nonfiniteValuesMadeMissing: string[] }
   authorized: boolean
   counts: Record<string, number>
   budgets: Record<string, { reserved: number; knownObserved: number; unknownOperations: number }>

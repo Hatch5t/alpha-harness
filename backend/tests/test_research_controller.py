@@ -261,6 +261,28 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
             )
         )
 
+    async def test_nonfinite_raw_metrics_export_as_flagged_missing_values(self) -> None:
+        ident = await self.create()
+        await self.finish(ident)
+        async with self.db.session() as session:
+            candidate = await session.scalar(
+                select(ResearchCandidate).where(
+                    ResearchCandidate.campaign_id == ident,
+                    ResearchCandidate.quick_trial_id.is_not(None),
+                )
+            )
+            trial = await session.get(Trial, candidate.quick_trial_id)
+            trial.result = trial.result | {"diagnostic": float("nan")}
+        report = await self.service.report(ident)
+        json.dumps(report, allow_nan=False)
+        self.assertTrue(report["dataQuality"]["nonfiniteValuesMadeMissing"])
+        self.assertTrue(
+            any(
+                c["quick"] and c["quick"]["result"].get("diagnostic", 0) is None
+                for c in report["candidates"]
+            )
+        )
+
     async def test_cancel_has_no_budget_reset_or_implicit_restart(self) -> None:
         ident = await self.create()
         await self.until(ident, "QUICK")

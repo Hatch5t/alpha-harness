@@ -1751,7 +1751,7 @@ class ResearchService:
                 else None
             )
 
-        return {
+        document = {
             "components": await self.components(CampaignSpec.model_validate(row.config)),
             "id": row.id,
             "name": row.name,
@@ -1829,6 +1829,11 @@ class ResearchService:
                 ),
             ),
         }
+
+        issues: list[str] = []
+        safe = evidence.finite_json(document, issues)
+        safe["dataQuality"] = {"nonfiniteValuesMadeMissing": issues}
+        return safe
 
     async def decision(self, campaign_id: int, candidate_id: int, decision: str, note: str) -> None:
         async with self.db.session() as session:
