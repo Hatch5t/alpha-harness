@@ -60,9 +60,7 @@ class OpenAICompatible:
         prompt itself and parse defensively. A 503 is sent again after a short wait.
         """
         if single_attempt:
-            return await self._complete(
-                model, system, user, temperature, schema, reasoning_effort
-            )
+            return await self._complete(model, system, user, temperature, schema, reasoning_effort)
         for wait in OVERLOADED_WAITS:
             try:
                 return await self._complete(
