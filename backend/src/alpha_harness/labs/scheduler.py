@@ -400,6 +400,12 @@ async def advance(optimizer: Optimizer, study_id: int) -> int:
                 return await send_parked(optimizer, row, owed)
     if stopping or committed >= row.max_trials:
         if not waiting:
+            if not stopping and row.sampler == POWER_POOL_SAMPLER:
+                from .pilot import stage_promotions
+
+                if await stage_promotions(optimizer, row.id):
+                    # Staged rows are persisted. The next tick will enqueue them.
+                    return 0
             await optimizer.set_status(study_id, StudyStatus.COMPLETE)
         return 0
     want = to_ask(room, int(in_flight or 0), row.max_trials - committed)
