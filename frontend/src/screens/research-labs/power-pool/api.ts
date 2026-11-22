@@ -26,6 +26,8 @@ export interface PowerPoolRequest {
   cores: number
   simulations: number
   hypothesis?: string
+  /** Opt-in hard limits: max 10 Quick, 2 Full, 2 generation attempts. */
+  controlled_pilot: boolean
 }
 
 const B = '/api/power-pool-lab'
