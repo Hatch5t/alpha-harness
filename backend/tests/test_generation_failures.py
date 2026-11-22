@@ -237,6 +237,18 @@ class GenerationFailureTests(unittest.IsolatedAsyncioTestCase):
             usage = await session.scalar(select(KeyUsage).where(KeyUsage.model == "synthetic"))
             self.assertEqual((usage.requests, usage.tokens, usage.reported_requests), (2, 0, 0))
 
+    async def test_malformed_usage_never_credits_tokens_or_masks_the_failure(self) -> None:
+        for value in [-30, True, "invalid"]:
+            self.completion("{}")
+            self.body["usage"]["total_tokens"] = value
+            with self.assertRaises(LLMError) as caught:
+                await self.call()
+            self.assertEqual(caught.exception.diagnostic.category, "malformed_response")
+            self.assertEqual(caught.exception.observed, {"requests": 1})
+        async with self.db.session() as session:
+            usage = await session.scalar(select(KeyUsage).where(KeyUsage.model == "synthetic"))
+            self.assertEqual((usage.requests, usage.tokens, usage.reported_requests), (3, 0, 0))
+
     async def test_compact_wire_schema_keeps_structure_and_strict_local_bounds(self) -> None:
         ctx = (await self.service._ios["offline"].contexts(self.spec))[0]
         generated, _ = await self.service._ios["offline"].generate(self.spec, ctx, "fixture")

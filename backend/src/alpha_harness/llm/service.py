@@ -85,6 +85,15 @@ def _out_of_credit(text: str) -> bool:
     return "insufficient_quota" in text
 
 
+def _token_count(value: Any) -> int:
+    """Untrusted usage must never turn a request into a token credit."""
+    if value is None:
+        return 0
+    if type(value) is not int or value < 0:
+        raise ValueError("Invalid provider token count")
+    return value
+
+
 #: How long a connection to a provider stays open between calls: a fresh one costs about
 #: 0.4 s of set-up, measured against Google, on answers that take two or three seconds.
 KEEPALIVE_SECONDS = 60.0
@@ -291,14 +300,21 @@ class LLMService:
                     continue
                 raise error from None
 
-            prompt = int(usage.get("prompt_tokens") or 0)
-            output = int(usage.get("completion_tokens") or 0)
-            reported = int(usage.get("total_tokens") or 0)
+            try:
+                prompt = _token_count(usage.get("prompt_tokens"))
+                output = _token_count(usage.get("completion_tokens"))
+                reported = _token_count(usage.get("total_tokens"))
+                details = usage.get("completion_tokens_details") or {}
+                reasoning = _token_count(details.get("reasoning_tokens"))
+            except ValueError, AttributeError, TypeError:
+                diagnostic = failure("malformed_response")
+                await self.keys.mark(key_id, error=diagnostic.message)
+                raise LLMError(
+                    diagnostic.message, diagnostic=diagnostic, observed={"requests": 1}
+                ) from None
             # Google reports no breakdown: its thinking is only what the total holds beyond
             # the prompt and the answer.
-            thought = int(
-                (usage.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0
-            ) or max(0, reported - prompt - output)
+            thought = reasoning or max(0, reported - prompt - output)
             total = reported or estimate
             if reported or prompt or output or thought:
                 await self.ledger.record_tokens(slot, model, reported or prompt + output + thought)
