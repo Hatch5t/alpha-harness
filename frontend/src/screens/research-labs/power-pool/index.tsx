@@ -243,9 +243,9 @@ export function PowerPoolLabScreen() {
               }
             />
             <p className="text-caption text-pretty text-ink-subtle">
-              Opt-in only. Uses one core and the selected model. Persists each request and
-              promotion before dispatch so limits survive restarts. Full simulations are not
-              alpha submissions. Review completed candidates in Q4 Campaign.
+              Opt-in only. Uses one core and the selected model. Persists each request and promotion
+              before dispatch so limits survive restarts. Full simulations are not alpha
+              submissions. Review completed candidates in Q4 Campaign.
             </p>
           </Fieldset>
           {scopeOptions.universes.length > 0 && (
