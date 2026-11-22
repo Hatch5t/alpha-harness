@@ -198,6 +198,7 @@ class BatchEngine:
         requests: list[SimulationRequest],
         *,
         task: str,
+        allow_uncertain_retry: bool = True,
     ) -> dict[str, Any]:
         """Accept work. Returns what was queued and what was skipped as a duplicate.
 
@@ -261,9 +262,24 @@ class BatchEngine:
                 elif digest in in_flight:
                     # Same payload still queued or running (possibly from earlier in this
                     # call): share that row, so its result reaches both callers for one run.
-                    plan.append((index, digest, SimStatus.SKIPPED, None, in_flight[digest]))
+                    shared = in_flight[digest]
+                    if not allow_uncertain_retry:
+                        if isinstance(shared, int):
+                            await session.execute(
+                                update(SimulationRecord)
+                                .where(SimulationRecord.id == shared)
+                                .values(allow_uncertain_retry=False)
+                            )
+                        else:
+                            shared.allow_uncertain_retry = False
+                    plan.append((index, digest, SimStatus.SKIPPED, None, shared))
                 else:
-                    record = new_record(request, task=task, status=SimStatus.QUEUED)
+                    record = new_record(
+                        request,
+                        task=task,
+                        status=SimStatus.QUEUED,
+                        allow_uncertain_retry=allow_uncertain_retry,
+                    )
                     session.add(record)
                     in_flight[digest] = record
                     plan.append((index, digest, SimStatus.QUEUED, None, record))
@@ -562,11 +578,29 @@ class BatchEngine:
                 )
                 for r in queued
             ]
+            # A controlled pilot's single core means one batch, with GLB's documented
+            # double slot cost. Never borrow extra cores or share batches with other tasks.
+            strict_tasks = frozenset(
+                await session.scalars(
+                    select(Study.task).where(
+                        Study.task.in_({item.task for item in items}),
+                        func.json_extract(Study.sampler_params, "$.pilot").is_(True),
+                    )
+                )
+            )
 
         quotas = await self.quotas()
+        for task in strict_tasks:
+            if quotas.get(task, 0) > 0:
+                quotas[task] = max(item.key.cost for item in items if item.task == task)
         demand = demand_by_task(items, self.max_batch)
         allocation = allocate_slots(
-            free, demand=demand, quotas=quotas, in_flight=in_flight, lend=self.lend_idle_cores
+            free,
+            demand=demand,
+            quotas=quotas,
+            in_flight=in_flight,
+            lend=self.lend_idle_cores,
+            strict_tasks=strict_tasks,
         )
         if not allocation:
             return 0
@@ -578,6 +612,7 @@ class BatchEngine:
             # Every task with work gets a cap: ``pack`` treats one it is not told about as
             # unlimited, and a task granted nothing is exactly one at its quota.
             task_capacity={task: allocation.get(task, 0) for task in demand},
+            strict_tasks=strict_tasks,
         )
 
         submitted = 0

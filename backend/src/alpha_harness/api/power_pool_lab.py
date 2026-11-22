@@ -109,6 +109,17 @@ async def _plan(body: PowerPoolRequest, state: Any) -> dict[str, Any]:
             problems.append("Controlled pilot uses exactly one core.")
         if not body.only_model:
             problems.append("Controlled pilot requires 'Only use this model' to be enabled.")
+        if not state.engine.quick_allowed:
+            problems.append(
+                "Controlled pilot needs BRAIN Quick-mode permission. "
+                "Sign in and refresh permissions."
+            )
+        if body.region == "ALL":
+            problems.append(
+                "Controlled pilot requires a single region; region-agnostic runs exceed its budget."
+            )
+        if body.region == "GLB":
+            warnings.append("One concurrent GLB batch uses two platform slot units.")
     operators = await account_operators(state, refresh=False)
     if not operators:
         problems.append(OPERATORS_UNREAD)

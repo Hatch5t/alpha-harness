@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 
 from ..brain.schemas import FULL_MODE
-from ..db.models import Study, Trial, TrialState
+from ..db.models import Study, StudyStatus, Trial, TrialState
 from .fastexpr import ParseError, parse, render
 from .params import POWER_POOL_SAMPLER, PowerPoolParams, params_of
 
@@ -37,12 +37,12 @@ class Choice:
 def _identity(expression: str) -> str:
     try:
         return render(parse(expression))
-    except ParseError:
+    except ParseError, RecursionError:
         return expression.strip()
 
 
 def _metric(value: object) -> float:
-    if not isinstance(value, int | float | str):
+    if isinstance(value, bool) or not isinstance(value, int | float | str):
         return float("nan")
     try:
         result = float(value)
@@ -118,7 +118,11 @@ async def stage_promotions(optimizer: Optimizer, study_id: int) -> int:
     """
     async with optimizer.db.session() as session:
         study = await session.get(Study, study_id)
-        if study is None or study.sampler != POWER_POOL_SAMPLER:
+        if (
+            study is None
+            or study.sampler != POWER_POOL_SAMPLER
+            or study.status != StudyStatus.RUNNING
+        ):
             return 0
         run = params_of(study, PowerPoolParams)
         if not run.pilot or run.stopping:
@@ -134,6 +138,8 @@ async def stage_promotions(optimizer: Optimizer, study_id: int) -> int:
             ).all()
         )
         existing = [t for t in rows if (t.params or {}).get("fullOf") is not None]
+        if any(t.state in {TrialState.QUEUED, TrialState.RUNNING} for t in rows):
+            return 0
         remaining = cap - len(existing)
         if remaining <= 0:
             return 0
@@ -156,6 +162,9 @@ async def stage_promotions(optimizer: Optimizer, study_id: int) -> int:
                         "pilotPromotion": True,
                         "dataset": choice.dataset,
                         "quality": choice.quality,
+                        "reason": "Passing Quick checks, positive Fitness and Sharpe; "
+                        "ranked by Fitness + 0.1 * Sharpe with dataset diversity. "
+                        "Requires Full eligibility and robustness review.",
                     },
                     distributions={},
                     expression=quick.expression,

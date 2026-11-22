@@ -22,6 +22,7 @@ class PowerPoolApiTests(unittest.IsolatedAsyncioTestCase):
             ),
             metadata=SimpleNamespace(cached_settings_schema=AsyncMock(return_value={})),
             catalog=None,
+            engine=SimpleNamespace(quick_allowed=False),
         )
         body = power_pool_lab.PowerPoolRequest(
             region="GLB",
@@ -65,6 +66,13 @@ class PowerPoolApiTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("ts_delta", preview.prompt.user)
             self.assertNotIn("unavailable_operator", preview.prompt.user)
             await power_pool_lab.add_task(body, state)
+            pilot_body = body.model_copy(update={"controlled_pilot": True, "only_model": True})
+            blocked = await power_pool_lab.preview(pilot_body, state)
+            self.assertTrue(any("Quick-mode permission" in p for p in blocked.problems))
+            state.engine.quick_allowed = True
+            allowed = await power_pool_lab.preview(pilot_body, state)
+            self.assertEqual(allowed.problems, [])
+            self.assertTrue(any("two platform slot" in w for w in allowed.warnings))
         params = add.call_args.kwargs["params"]
         self.assertEqual(params.hypothesis, body.hypothesis)
         self.assertEqual(params.favour_operators, body.favour_operators)

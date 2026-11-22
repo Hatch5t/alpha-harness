@@ -103,10 +103,11 @@ export function Keys() {
     },
     {
       key: 'tokens',
-      header: 'Tokens today',
-      width: '120px',
+      header: 'Reported tokens',
+      width: '150px',
       align: 'right',
-      cell: (k) => fmt.int(k.usage.reduce((s, u) => s + u.tokens, 0)),
+      cell: (k) =>
+        `${fmt.int(k.usage.reduce((s, u) => s + u.tokens, 0))}${k.usage.some((u) => u.usageIncomplete) ? ' + unknown' : ''}`,
     },
     {
       key: 'actions',

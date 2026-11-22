@@ -21,7 +21,7 @@ from ..brain.platform import (
     POWER_POOL_MAX_OPERATORS,
     REGION_AGNOSTIC_REGION,
 )
-from ..brain.schemas import SimulationSettings
+from ..brain.schemas import QUICK_MODE, SimulationSettings
 from ..catalog.queries import CatalogQueries, FieldFilter, Tuple4
 from ..db.models import Study, StudyStatus, Trial, TrialState, utcnow
 from ..llm.keys import BudgetExhaustedError, LLMError, LLMUnavailable
@@ -533,7 +533,7 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
         # The task's model first; with it out of budget or its provider down, the next one a
         # Key can run, most requests left first, so the run never sits waiting for a reset.
         refs = [run.model]
-        if not run.only_model:
+        if not run.only_model and not run.pilot:
             refs += [str(m["ref"]) for m in await optimizer.llm.runnable()]
         models = [m for ref in dict.fromkeys(refs) if (m := optimizer.llm.registry.get(ref))]
         operators = await optimizer.metadata.cached_operators() or []
@@ -677,6 +677,8 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
                     if expression in seen:
                         raise Rejected("Already written in this task.")
                     settings = draw(rng, used, ctx, run)
+                    if run.pilot:
+                        settings |= {"simulationMode": QUICK_MODE, "visualization": False}
                     seen.add(expression)
                     valid += 1
                     params = {"dataset": dataset, "model": model.id}

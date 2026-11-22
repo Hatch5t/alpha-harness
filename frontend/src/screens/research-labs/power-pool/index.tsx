@@ -243,9 +243,10 @@ export function PowerPoolLabScreen() {
               }
             />
             <p className="text-caption text-pretty text-ink-subtle">
-              Opt-in only. Uses one core and the selected model. Persists each request and promotion
-              before dispatch so limits survive restarts. Full simulations are not alpha
-              submissions. Review completed candidates in Q4 Campaign.
+              Uses one concurrent batch and the selected model, targeting 10 Quick runs with at most
+              2 Full promotions and 2 generation attempts. GLB uses two platform slot units per
+              batch. Limits survive restarts; an uncertain send stops for review instead of being
+              sent twice. Full simulations require further review before any manual submission.
             </p>
           </Fieldset>
           {scopeOptions.universes.length > 0 && (

@@ -223,7 +223,9 @@ async def reconcile_orphans(
                 adopted.append((row, hit["id"]))
             elif anchor + WINDOW < now:
                 # A send that keeps losing its answer would otherwise loop here forever.
-                lost_before = row.orphan_requeues >= MAX_ORPHAN_REQUEUES
+                lost_before = (
+                    not row.allow_uncertain_retry or row.orphan_requeues >= MAX_ORPHAN_REQUEUES
+                )
                 (abandon if lost_before else requeue).append(row.id)
 
     landed: list[str] = []
@@ -260,8 +262,8 @@ async def reconcile_orphans(
             from_=[SimStatus.ORPHANED],
             status=SimStatus.ERROR,
             finished_at=utcnow(),
-            message=f"BRAIN's answer to this simulation was lost {MAX_ORPHAN_REQUEUES + 1} "
-            "times and no alpha appeared, so it is not sent again.",
+            message="Uncertain send could not be recovered. Hard budget or retry limit "
+            "forbids resending; inspect BRAIN and approve a separate run if needed.",
         )
         # A batch parent carries no alpha of its own; its children are resolved one by
         # one above. Close it so it does not sit unfinished in every list.

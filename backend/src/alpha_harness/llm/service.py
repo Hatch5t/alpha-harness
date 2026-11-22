@@ -20,7 +20,7 @@ from openai import DefaultAsyncHttpxClient
 from ..schemas import camel_dict
 from .budget import Ledger
 from .keys import BudgetExhaustedError, KeyStore, LLMError, LLMUnavailable
-from .openai_compat import OpenAICompatible, ProviderError
+from .openai_compat import OVERLOADED_WAITS, OpenAICompatible, ProviderError
 from .providers import PROVIDERS
 from .text import estimate_tokens
 
@@ -224,6 +224,7 @@ class LLMService:
         schema = response_schema if model.provider == "google" else None
         sampling = None if model.ref in self._default_sampling else temperature
         provider_attempts = 0
+        overloaded = 0
 
         while True:
             # The controlled pilot forbids retrying a physical request through a
@@ -231,7 +232,7 @@ class LLMService:
             if max_provider_attempts is not None and provider_attempts >= max_provider_attempts:
                 raise LLMUnavailable("Controlled pilot provider request limit reached.")
             try:
-                key_id = await self.keys.choose(model, skip=tried)
+                slot = await self.keys.choose(model, skip=tried)
             except BudgetExhaustedError as exc:
                 # Every key has been tried: one that was turned away says more than a budget.
                 if refusal is not None:
@@ -239,82 +240,90 @@ class LLMService:
                 if tried:
                     exc.args = (f"{exc.args[0]} Already tried: {len(tried)} key(s).",)
                 raise
+            key_id = slot.key_id
             tried.add(key_id)
 
-            # Settled however this ends: answered and recorded, failed, or retried.
+            # The durable request charge is never refunded after a send may start.
+            secret = await self.keys.secret(key_id)
+            client = self._client(model.provider, secret)
+
             try:
-                secret = await self.keys.secret(key_id)
-                client = self._client(model.provider, secret)
-
-                try:
-                    provider_attempts += 1
-                    text, usage = await asyncio.wait_for(
-                        client.generate(
-                            model=model.id,
-                            system=system,
-                            user=user,
-                            temperature=sampling,
-                            schema=schema,
-                            reasoning_effort=effort,
-                            single_attempt=max_provider_attempts is not None,
-                        ),
-                        timeout=TIMEOUT_SECONDS,
-                    )
-                except TimeoutError as exc:
-                    await self.keys.mark(key_id, error="Timed out")
-                    # The provider had the request and may well bill it, so it counts.
-                    await self.ledger.record(key_id, model, estimate)
-                    raise LLMUnavailable(
-                        f"{model.id} did not answer within {TIMEOUT_SECONDS:.0f} seconds. "
-                        "Try a smaller question or a lighter model."
-                    ) from exc
-                except Exception as exc:
-                    if sampling is not None and _rejects_temperature(exc):
-                        # The key is fine; the model only wants its own default. Same key again.
-                        log.info("llm.temperature_refused", model=model.id)
-                        self._default_sampling.add(model.ref)
-                        sampling = None
-                        tried.discard(key_id)
-                        continue
-                    limited, daily = _is_rate_limit(exc)
-                    await self.keys.mark(key_id, error=str(exc)[:300])
-                    if limited:
-                        # Google is the authority: mark this pair spent and rotate rather than
-                        # retrying into a limit we evidently mis-tracked.
-                        await self.ledger.penalise(key_id, model, daily=daily)
-                        log.warning("llm.rate_limited", key_id=key_id, model=model.id, daily=daily)
-                        continue
-                    # 5xx is the provider's own trouble ("overloaded"): another model may answer.
-                    kind = LLMUnavailable if (_status(exc) or 0) >= 500 else LLMError
-                    error = kind(_plain_reason(exc) or f"{model.id} could not be reached: {exc}")
-                    if _refused(exc):
-                        log.warning("llm.key_refused", key_id=key_id, model=model.id)
-                        refusal = error
-                        continue
-                    raise error from exc
-
-                prompt = int(usage.get("prompt_tokens") or 0)
-                output = int(usage.get("completion_tokens") or 0)
-                reported = int(usage.get("total_tokens") or 0)
-                # Google reports no breakdown: its thinking is only what the total holds beyond
-                # the prompt and the answer.
-                thought = int(
-                    (usage.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0
-                ) or max(0, reported - prompt - output)
-                total = reported or estimate
-                await self.ledger.record(key_id, model, total)
-                await self.keys.mark(key_id)
-
-                return Answer(
-                    text=text.strip(),
-                    model=model.id,
-                    prompt_tokens=prompt,
-                    output_tokens=output,
-                    thinking_tokens=thought,
-                    total_tokens=total,
+                provider_attempts += 1
+                text, usage = await asyncio.wait_for(
+                    client.generate(
+                        model=model.id,
+                        system=system,
+                        user=user,
+                        temperature=sampling,
+                        schema=schema,
+                        reasoning_effort=effort,
+                        single_attempt=True,
+                    ),
+                    timeout=TIMEOUT_SECONDS,
                 )
-            finally:
-                self.ledger.settled(key_id, model)
+            except TimeoutError as exc:
+                await self.keys.mark(key_id, error="Timed out")
+                # The provider had the request and may well bill it, so it counts.
+                raise LLMUnavailable(
+                    f"{model.id} did not answer within {TIMEOUT_SECONDS:.0f} seconds. "
+                    "Try a smaller question or a lighter model."
+                ) from exc
+            except Exception as exc:
+                if sampling is not None and _rejects_temperature(exc):
+                    # The key is fine; the model only wants its own default. Same key again.
+                    log.info("llm.temperature_refused", model=model.id)
+                    self._default_sampling.add(model.ref)
+                    sampling = None
+                    tried.discard(key_id)
+                    continue
+                if (
+                    _status(exc) == 503
+                    and max_provider_attempts is None
+                    and overloaded < len(OVERLOADED_WAITS)
+                ):
+                    wait = OVERLOADED_WAITS[overloaded]
+                    overloaded += 1
+                    tried.discard(key_id)
+                    await asyncio.sleep(wait)
+                    continue
+                limited, daily = _is_rate_limit(exc)
+                await self.keys.mark(key_id, error=str(exc)[:300])
+                if limited:
+                    # Google is the authority: mark this pair spent and rotate rather than
+                    # retrying into a limit we evidently mis-tracked.
+                    await self.ledger.penalise(key_id, model, daily=daily)
+                    log.warning("llm.rate_limited", key_id=key_id, model=model.id, daily=daily)
+                    continue
+                # 5xx is the provider's own trouble ("overloaded"): another model may answer.
+                kind = LLMUnavailable if (_status(exc) or 0) >= 500 else LLMError
+                error = kind(_plain_reason(exc) or f"{model.id} could not be reached: {exc}")
+                if _refused(exc):
+                    log.warning("llm.key_refused", key_id=key_id, model=model.id)
+                    refusal = error
+                    continue
+                raise error from exc
+
+            prompt = int(usage.get("prompt_tokens") or 0)
+            output = int(usage.get("completion_tokens") or 0)
+            reported = int(usage.get("total_tokens") or 0)
+            # Google reports no breakdown: its thinking is only what the total holds beyond
+            # the prompt and the answer.
+            thought = int(
+                (usage.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0
+            ) or max(0, reported - prompt - output)
+            total = reported or estimate
+            if usage:
+                await self.ledger.record_tokens(slot, model, reported or prompt + output + thought)
+            await self.keys.mark(key_id)
+
+            return Answer(
+                text=text.strip(),
+                model=model.id,
+                prompt_tokens=prompt,
+                output_tokens=output,
+                thinking_tokens=thought,
+                total_tokens=total,
+            )
 
     # -- health ----------------------------------------------------------
 

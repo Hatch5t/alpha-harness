@@ -3556,8 +3556,18 @@ export interface components {
             model: string;
             /** Requests */
             requests: number;
+            /**
+             * Requestswithreportedusage
+             * @default 0
+             */
+            requestsWithReportedUsage: number;
             /** Tokens */
             tokens: number;
+            /**
+             * Usageincomplete
+             * @default true
+             */
+            usageIncomplete: boolean;
         };
         /** LLMModels */
         LLMModels: {

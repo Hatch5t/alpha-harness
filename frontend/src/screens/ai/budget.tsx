@@ -16,6 +16,7 @@ interface KeyModelRow {
   /** What is left of that, as the backend counts it: a Key's cap counts every model it serves. */
   remaining: number
   tokens: number
+  usageIncomplete: boolean
 }
 
 export function Budget() {
@@ -50,6 +51,7 @@ export function Budget() {
             allowed: k.dailyLimit === null ? m.rpd : Math.min(k.dailyLimit, m.rpd),
             remaining: k.remainingToday[m.id] ?? 0,
             tokens: usage.reduce((s, u) => s + u.tokens, 0),
+            usageIncomplete: usage.some((u) => u.usageIncomplete),
           }
         }),
     )
@@ -95,10 +97,10 @@ export function Budget() {
     },
     {
       key: 'tokens',
-      header: 'Tokens today',
-      width: '110px',
+      header: 'Reported tokens',
+      width: '150px',
       align: 'right',
-      cell: (r) => fmt.int(r.tokens),
+      cell: (r) => `${fmt.int(r.tokens)}${r.usageIncomplete ? ' + unknown' : ''}`,
     },
   ]
 

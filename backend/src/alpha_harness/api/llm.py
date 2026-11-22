@@ -40,6 +40,8 @@ class LLMKeyUsage(Out):
     day: str
     requests: int
     tokens: int
+    requests_with_reported_usage: int = 0
+    usage_incomplete: bool = True
     last_request_at: str | None
 
 

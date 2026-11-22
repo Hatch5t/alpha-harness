@@ -14,7 +14,7 @@ import structlog
 from sqlalchemy import String, func, not_, or_, select, type_coerce, update
 
 from ..brain.platform import MULTI_SIMULATION_SIZE
-from ..brain.schemas import SimulationRequest, SimulationSettings, SimulationType
+from ..brain.schemas import QUICK_MODE, SimulationRequest, SimulationSettings, SimulationType
 from ..brain.settings_schema import validate_settings
 from ..db.models import SimStatus, SimulationRecord, Study, StudyStatus, Trial, TrialState, utcnow
 from . import ga, search, template
@@ -29,6 +29,7 @@ from .params import (
     SUPER_LAB,
     TASK_SAMPLERS,
     TEMPLATE_SAMPLER,
+    PowerPoolParams,
     SearchParams,
     TemplateParams,
     params_of,
@@ -121,10 +122,25 @@ async def send_parked(optimizer: Optimizer, row: Study, batch: Sequence[Trial]) 
     ``batch`` must still be attached to the caller's session: the outcome is written by
     assigning to those rows, which is what saves a round trip per trial.
     """
+    pilot = row.sampler == POWER_POOL_SAMPLER and params_of(row, PowerPoolParams).pilot
+    if pilot:
+        for trial in batch:
+            if (trial.params or {}).get("fullOf") is None:
+                trial.settings = {
+                    **trial.settings,
+                    "simulationMode": QUICK_MODE,
+                    "visualization": False,
+                }
     requests = [request_of(t) for t in batch]
-    outcomes = (await optimizer.engine.enqueue(requests, task=row.task)).get("outcomes", [])
-    for index, trial in enumerate(batch):
-        for field, value in queued(outcomes[index] if index < len(outcomes) else {}).items():
+    outcomes = (
+        await optimizer.engine.enqueue(
+            requests, task=row.task, **({"allow_uncertain_retry": False} if pilot else {})
+        )
+    ).get("outcomes", [])
+    if len(outcomes) != len(batch):
+        raise ValueError("Engine outcomes do not match the requested trial count.")
+    for trial, outcome in zip(batch, outcomes, strict=True):
+        for field, value in queued(outcome).items():
             setattr(trial, field, value)
     return len(batch)
 
@@ -378,7 +394,8 @@ async def advance(optimizer: Optimizer, study_id: int) -> int:
     last_number = -1 if last is None else int(last)
     # Borrowed cores only run what is queued, so a task queues for them too; the engine then
     # hands them to whichever tasks have work beyond their own cores.
-    room = row.batch_size + optimizer.lendable_cores * MULTI_SIMULATION_SIZE
+    pilot = row.sampler == POWER_POOL_SAMPLER and params_of(row, PowerPoolParams).pilot
+    room = row.batch_size + (0 if pilot else optimizer.lendable_cores * MULTI_SIMULATION_SIZE)
     space = room - int(in_flight or 0)
     if not stopping and space > 0:
         # Ahead of the task's own budget: a passing Quick Alpha is only submittable once it is
