@@ -59,6 +59,7 @@ interface PowerPoolDraft {
   /** Empty draws from every downloaded universe of the market. */
   universes: string[]
   hypothesis: string
+  controlledPilot: boolean
 }
 
 const useDraft = create<PowerPoolDraft>()(
@@ -76,16 +77,18 @@ const useDraft = create<PowerPoolDraft>()(
       neutralizations: [],
       universes: [],
       hypothesis: '',
+      controlledPilot: false,
     }),
     {
       name: 'alpha-harness-power-pool-lab',
       // Version 1 leaves cores unchosen, so Settings' default for new tasks applies.
       // Version 2 adds universes, none chosen: every downloaded one, as before.
-      version: 2,
+      version: 3,
       migrate: (stored, version) => ({
         ...(stored as PowerPoolDraft),
         ...(version < 1 ? { cores: null } : {}),
-        universes: [],
+        ...(version < 3 ? { controlledPilot: false } : {}),
+        ...(version < 2 ? { universes: [] } : {}),
       }),
     },
   ),
@@ -133,6 +136,7 @@ export function PowerPoolLabScreen() {
     cores,
     simulations: draft.simulations ?? 0,
     hypothesis: draft.hypothesis ?? '',
+    controlled_pilot: draft.controlledPilot ?? false,
   }
   const { preview, current } = useLabPreview('power-pool-lab', body, powerPoolLab.preview)
   const plan = preview.data
@@ -221,6 +225,29 @@ export function PowerPoolLabScreen() {
               onChange={(next) => set({ simulations: next })}
             />
           </div>
+          <Fieldset legend="Controlled research pilot">
+            <Checkbox
+              label="Enable capped Quick-to-Full pilot (10 Quick, 2 Full, 2 LLM attempts)"
+              checked={draft.controlledPilot ?? false}
+              onChange={(controlledPilot) =>
+                set(
+                  controlledPilot
+                    ? {
+                        controlledPilot,
+                        cores: 1,
+                        simulations: 10,
+                        onlyModel: true,
+                      }
+                    : { controlledPilot },
+                )
+              }
+            />
+            <p className="text-caption text-pretty text-ink-subtle">
+              Opt-in only. Uses one core and the selected model. Persists each request and
+              promotion before dispatch so limits survive restarts. Full simulations are not
+              alpha submissions. Review completed candidates in Q4 Campaign.
+            </p>
+          </Fieldset>
           {scopeOptions.universes.length > 0 && (
             <Fieldset legend={universes.length === 0 ? 'Universes · all downloaded' : 'Universes'}>
               <Chips
