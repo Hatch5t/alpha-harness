@@ -127,9 +127,7 @@ async def stage_promotions(optimizer: Optimizer, study_id: int) -> int:
         rows = list(
             (
                 await session.scalars(
-                    select(Trial)
-                    .where(Trial.study_id == study_id)
-                    .order_by(Trial.number)
+                    select(Trial).where(Trial.study_id == study_id).order_by(Trial.number)
                 )
             ).all()
         )
