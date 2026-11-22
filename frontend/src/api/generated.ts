@@ -4147,6 +4147,11 @@ export interface components {
         /** PowerPoolRequest */
         PowerPoolRequest: {
             /**
+             * Controlled Pilot
+             * @default false
+             */
+            controlled_pilot: boolean;
+            /**
              * Cores
              * @default 8
              */
