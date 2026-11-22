@@ -35,6 +35,7 @@ from alpha_harness.db.sqlite import Database
 from alpha_harness.engine.slots import BatchEngine
 from alpha_harness.engine.tracker import SimulationTracker
 from alpha_harness.labs.template_document import TemplateBody
+from alpha_harness.llm.keys import LLMError
 from alpha_harness.research import budget, evidence
 from alpha_harness.research.schemas import CampaignSpec, Limits
 from alpha_harness.research.service import ResearchError, ResearchService
@@ -193,6 +194,37 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(report["budgets"]["requests"]["reserved"], 2)
         self.assertEqual(report["budgets"]["requests"]["unknownOperations"], 1)
         self.assertTrue(any(e["kind"] == "interrupted_generation" for e in report["events"]))
+
+    async def test_all_provider_generations_fail_without_false_success(self) -> None:
+        ident = await self.create()
+        io = self.service._ios["offline"]
+        error = LLMError(
+            "Provider response contained private request data; never export this text.",
+            provider_status=400,
+            provider_category="schema_rejected",
+        )
+        with patch.object(io, "generate", side_effect=error):
+            for _ in range(40):
+                await self.service.advance(ident)
+                row = await self.service.get(ident)
+                if row.status in {"FAILED", "BLOCKED", "COMPLETE"}:
+                    break
+        self.assertEqual(row.status, "FAILED", row.message)
+        self.assertEqual(row.cursor["stage"], "FAILED")
+        report = await self.service.report(ident)
+        self.assertEqual(report["candidates"], [])
+        self.assertEqual(report["hypotheses"], [])
+        self.assertEqual(report["budgets"]["requests"]["reserved"], 2)
+        self.assertEqual(report["budgets"]["requests"]["unknownOperations"], 2)
+        failures = [event for event in report["events"] if event["kind"] == "provider_failure"]
+        self.assertEqual(len(failures), 2)
+        for event in failures:
+            self.assertEqual(event["payload"]["httpStatus"], 400)
+            self.assertEqual(event["payload"]["reasonCode"], "schema_rejected")
+        self.assertNotIn("private request data", json.dumps(report))
+        with self.assertRaises(ResearchError):
+            await self.service.control(ident, "resume")
+        self.forbidden.assert_not_awaited()
 
     async def test_zero_full_budget_saves_empty_approval_queue_with_reasons(self) -> None:
         ident = await self.create(limits=Limits(full=0))
