@@ -17,11 +17,15 @@ from sqlalchemy import select
 if TYPE_CHECKING:
     from ..brain.schemas import SimulationRequest
     from ..labs.template_document import FieldsVariable
+from pydantic import ValidationError
+
 from ..catalog.queries import Tuple4
 from ..db.models import DispatchIntent, ResearchProfile, SimStatus, SimulationRecord, utcnow
 from ..engine.lifecycle import new_record, request_hash
 from ..labs.power_pool import Context, Field, context_for, operators_text
 from ..labs.study import Optimizer
+from ..llm.failures import failure
+from ..llm.keys import LLMError
 from ..llm.text import loads_or
 from .schemas import CampaignSpec, Generated, GeneratedAlpha, Hypothesis, Profile
 
@@ -313,6 +317,7 @@ class ResearchIO:
                 "instruction": "Return 3 falsifiable mechanisms and 20 diverse expressions. "
                 "An alpha's hypothesis is its zero-based index. Do not repeat failed ideas "
                 "without an explicit changed mechanism. No performance guarantees.",
+                "responseSchema": Generated.model_json_schema(),
             }
         )
 
@@ -324,12 +329,12 @@ class ResearchIO:
                 system=SYSTEM,
                 user=prompt,
                 model_ref=spec.model,
-                response_schema=Generated.model_json_schema(),
+                response_schema=Generated.provider_schema(),
                 temperature=1.0,
                 max_provider_attempts=1,
                 max_output_tokens=spec.max_output_tokens,
             )
-            return Generated.model_validate(loads_or(answer.text)), (
+            observed = (
                 {
                     "requests": 1,
                     "tokens": answer.total_tokens,
@@ -339,6 +344,33 @@ class ResearchIO:
                 if answer.usage_reported
                 else {"requests": 1}
             )
+            payload = loads_or(answer.text)
+            # loads_or intentionally degrades malformed JSON for chat callers. Research
+            # must distinguish a parse failure from valid JSON failing the strict schema.
+            if not payload:
+                from ..llm.text import FENCE
+
+                valid_json = False
+                for candidate in (answer.text, *(m.group(1) for m in FENCE.finditer(answer.text))):
+                    try:
+                        json.loads(candidate)
+                        valid_json = True
+                        break
+                    except ValueError, TypeError:
+                        continue
+                if not valid_json:
+                    diagnostic = failure(
+                        "malformed_response" if answer.text.strip() else "empty_response"
+                    )
+                    raise LLMError(diagnostic.message, diagnostic=diagnostic, observed=observed)
+            try:
+                generated = Generated.model_validate(payload)
+            except ValidationError:
+                diagnostic = failure("schema_validation")
+                raise LLMError(
+                    diagnostic.message, diagnostic=diagnostic, observed=observed
+                ) from None
+            return generated, observed
         hypotheses = [
             Hypothesis(
                 mechanism=f"Synthetic {family} mechanism in {ctx.id}; not a real alpha claim.",

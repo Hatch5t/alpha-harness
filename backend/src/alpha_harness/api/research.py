@@ -78,9 +78,7 @@ async def listing(state: State) -> list[dict[str, Any]]:
             "id": r.id,
             "name": r.name,
             "mode": r.mode,
-            "status": r.status,
-            "stage": r.cursor.get("stage"),
-            "message": r.message,
+            **await state.research.generation_outcome(r),
             "createdAt": r.created_at.isoformat(),
         }
         for r in rows

@@ -25,7 +25,7 @@ name: release
 on:
   push:
     tags: ["v*"]
-    branches: ["codex/macos-research-build", "codex/grandmaster-preflight-v1", "codex/durable-quick-full-pilot-v1", "codex/autonomous-research-v1"]
+    branches: ["codex/macos-research-build", "codex/grandmaster-preflight-v1", "codex/durable-quick-full-pilot-v1", "codex/autonomous-research-v1", "codex/rc4-generation-failures"]
   workflow_dispatch:
     inputs:
       version:
@@ -75,7 +75,7 @@ jobs:
         id: version
         shell: bash
         env:
-          REF: ${{ inputs.version || (github.ref_type == 'tag' && github.ref_name) || ((github.ref_name == 'codex/durable-quick-full-pilot-v1' || github.ref_name == 'codex/autonomous-research-v1') && '2026.11.22rc4') || '2026.11.22rc3' }}
+          REF: ${{ inputs.version || (github.ref_type == 'tag' && github.ref_name) || (github.ref_name == 'codex/rc4-generation-failures' && '2026.11.23rc1') || ((github.ref_name == 'codex/durable-quick-full-pilot-v1' || github.ref_name == 'codex/autonomous-research-v1') && '2026.11.22rc4') || '2026.11.22rc3' }}
         run: |
           uv run --with packaging --no-project --quiet python - <<'PY'
           import os, pathlib

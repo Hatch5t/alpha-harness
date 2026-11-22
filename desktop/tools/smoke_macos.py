@@ -53,6 +53,17 @@ def main() -> None:
             "ALPHA_HARNESS_HOME": str(home),
             "ALPHA_HARNESS_DATA_DIR": str(root / "data"),
         }
+        # Test the installed wheel and real SDK on Apple Silicon. MockTransport
+        # intercepts every request; no provider or BRAIN access occurs.
+        test_environment = environment.copy()
+        test_environment.pop("PYTHONPATH", None)
+        subprocess.run(
+            [str(python), "-m", "unittest", "discover", "-s",
+             str(Path(__file__).resolve().parents[2] / "backend/tests"),
+             "-p", "test_generation_failures.py"],
+            env=test_environment, check=True,
+        )
+        print("Native installed-wheel LLM fault injection and conservative accounting passed.")
         expected = None
         research_id = None
         for attempt in range(2):

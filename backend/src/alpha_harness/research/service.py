@@ -41,6 +41,7 @@ from ..labs.pilot import candidates as quick_choices
 from ..labs.power_pool import Context, Rejected, check
 from ..labs.power_pool_preflight import repair_temporal_vector
 from ..labs.template_document import FieldsVariable
+from ..llm.failures import failure
 from ..llm.keys import BudgetExhaustedError, LLMError
 from . import budget, evidence, profiles
 from .io import SYSTEM, ResearchIO
@@ -49,6 +50,13 @@ from .schemas import SAMPLER, CampaignSpec, Generated, GeneratedAlpha, Hypothesi
 
 class ResearchError(ValueError):
     """Actionable domain refusal, without credentials or provider payloads."""
+
+
+GENERATION_FAILED = (
+    "All generation attempts failed before simulation. No research result was produced. "
+    "Review failure diagnostics and LLM Integration, then create a new campaign with explicit "
+    "approval and remaining global caps. Reserved requests are retained; unknown usage is not zero."
+)
 
 
 class ResearchService:
@@ -152,6 +160,49 @@ class ResearchService:
             if row is None:
                 raise ResearchError("Research campaign was not found.")
             return row
+
+    async def generation_outcome(self, row: ResearchCampaign) -> dict[str, Any]:
+        """Project legacy false-COMPLETE records accurately without rewriting history."""
+        async with self.db.session() as session:
+            events = list(
+                await session.scalars(
+                    select(ResearchEvent).where(
+                        ResearchEvent.campaign_id == row.id,
+                        ResearchEvent.kind.in_(
+                            [
+                                "provider_failure",
+                                "unsupported_model_response",
+                                "interrupted_generation",
+                                "generated",
+                            ]
+                        ),
+                    )
+                )
+            )
+            candidates = await session.scalar(
+                select(func.count())
+                .select_from(ResearchCandidate)
+                .where(ResearchCandidate.campaign_id == row.id)
+            )
+        failures = [
+            {
+                "dataset": e.payload.get("dataset"),
+                "diagnostic": e.payload.get("diagnostic") or failure("unknown").document(),
+            }
+            for e in events
+            if e.kind != "generated"
+        ]
+        all_failed = (
+            bool(failures) and not candidates and not any(e.kind == "generated" for e in events)
+        )
+        effective_failed = all_failed and row.status in {"COMPLETE", "FAILED"}
+        return {
+            "status": "FAILED" if effective_failed else row.status,
+            "storedStatus": row.status,
+            "stage": "FAILED" if effective_failed else row.cursor.get("stage"),
+            "message": GENERATION_FAILED if effective_failed else row.message,
+            "generation": {"allFailed": all_failed, "failures": failures},
+        }
 
     async def event(
         self, session: Any, campaign_id: int, key: str, kind: str, payload: dict[str, Any]
@@ -373,6 +424,11 @@ class ResearchService:
 
     async def control(self, campaign_id: int, action: str) -> None:
         row = await self.get(campaign_id)
+        if row.status == "FAILED":
+            raise ResearchError(
+                "This campaign failed. Prepare a newly approved recovery campaign; "
+                "its reserved attempts cannot be reset."
+            )
         spec = CampaignSpec.model_validate(row.config)
         io = self._ios[row.mode]
         if action in {"start", "resume"}:
@@ -512,6 +568,19 @@ class ResearchService:
         wanted = [item["datasetId"] for item in row.cursor.get("backlog", [])][:maximum]
         dataset = next((key for key in wanted if key not in done), None)
         if dataset is None:
+            outcome = await self.generation_outcome(row)
+            if outcome["generation"]["allFailed"]:
+                async with self.db.session() as session:
+                    current = await session.get(ResearchCampaign, row.id)
+                    if current.status == "RUNNING":
+                        current.status, current.message = "FAILED", GENERATION_FAILED
+                        current.cursor = current.cursor | {"stage": "FAILED"}
+                        study = await session.get(Study, row.study_id)
+                        study.status, study.finished_at = StudyStatus.FAILED, utcnow()
+                        await self.event(
+                            session, row.id, "generation-failed", "generation_failed", {}
+                        )
+                return
             await self._cursor(row.id, stage="QUICK")
             return
         if dataset not in contexts:
@@ -622,17 +691,42 @@ class ResearchService:
             try:
                 generated, observed = await io.generate(spec, ctx, prompt)
             except (LLMError, ValidationError) as exc:
+                diagnostic = (
+                    exc.diagnostic or failure("configuration")
+                    if isinstance(exc, LLMError)
+                    else failure("schema_validation")
+                )
+                observed = exc.observed.copy() if isinstance(exc, LLMError) else {}
+                if price and "input" in observed:
+                    observed["microusd"] = math.ceil(
+                        (
+                            observed["input"] * price.input_microusd_per_million
+                            + observed["output"] * price.output_microusd_per_million
+                        )
+                        / 1_000_000
+                    )
                 async with self.db.session() as session:
                     await self.event(
                         session,
                         row.id,
                         operation + ":failed",
                         "unsupported_model_response"
-                        if isinstance(exc, ValidationError)
+                        if diagnostic.category
+                        in {
+                            "schema_validation",
+                            "malformed_response",
+                            "empty_response",
+                            "output_limit",
+                            "refusal",
+                        }
                         else "provider_failure",
-                        {"dataset": dataset, "errorClass": type(exc).__name__},
+                        {
+                            "dataset": dataset,
+                            "errorClass": type(exc).__name__,
+                            "diagnostic": diagnostic.document(),
+                        },
                     )
-                await budget.observed(self.db, row.id, operation, {})
+                await budget.observed(self.db, row.id, operation, observed)
                 await self._cursor(row.id, generated=[*done, dataset])
                 return
             if price and "input" in observed:
@@ -1752,17 +1846,15 @@ class ResearchService:
             )
 
         document = {
+            **await self.generation_outcome(row),
             "components": await self.components(CampaignSpec.model_validate(row.config)),
             "id": row.id,
             "name": row.name,
             "mode": row.mode,
-            "status": row.status,
             "config": row.config,
             "configHash": row.config_hash,
             "authorized": row.authorized_hash == row.config_hash,
-            "stage": row.cursor.get("stage"),
             "cycle": row.cursor.get("cycle"),
-            "message": row.message,
             "retryAt": row.retry_at.isoformat() if row.retry_at else None,
             "createdAt": row.created_at.isoformat(),
             "counts": counts,

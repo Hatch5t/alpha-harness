@@ -115,8 +115,17 @@ class OpenAICompatible:
             )
         except APIStatusError as exc:
             raise ProviderError(exc.status_code, _detail(exc.response)) from exc
-        text = completion.choices[0].message.content if completion.choices else None
-        return text or "", completion.usage.model_dump() if completion.usage else {}
+        choice = completion.choices[0] if completion.choices else None
+        text = choice.message.content if choice else None
+        usage = completion.usage.model_dump() if completion.usage else {}
+        # Keep known usage even when HTTP succeeded but the answer is unusable.
+        if choice and (choice.message.refusal or choice.finish_reason == "content_filter"):
+            usage["_response_failure"] = "refusal"
+        elif choice and choice.finish_reason == "length":
+            usage["_response_failure"] = "output_limit"
+        elif not text or not text.strip():
+            usage["_response_failure"] = "empty_response"
+        return text or "", usage
 
     async def models(self, **query: object) -> list[str]:
         """Model ids this key can reach. Not billed against the generation quota."""

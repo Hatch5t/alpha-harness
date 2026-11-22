@@ -22,6 +22,7 @@ from .budget import Headroom, Ledger, Reservation, ReservationBlocked, model_res
 if TYPE_CHECKING:
     from ..db.sqlite import Database
     from ..sealing import Sealer
+    from .failures import Failure
     from .registry import ModelInfo, ModelRegistry
 
 log = structlog.get_logger(__name__)
@@ -33,6 +34,17 @@ KEY_CONTEXT = "google-api-key"
 
 class LLMError(Exception):
     """Something wrong with the LLM setup, phrased for whoever has to fix it."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        diagnostic: Failure | None = None,
+        observed: dict[str, int] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.diagnostic = diagnostic
+        self.observed = observed or {}
 
 
 class LLMUnavailable(LLMError):
