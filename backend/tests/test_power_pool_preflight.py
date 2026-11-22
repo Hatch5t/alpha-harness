@@ -140,6 +140,40 @@ class PowerPoolPreflightTests(unittest.TestCase):
         self.assertEqual(len(select_pending(trials, 5, "Test value ranking.")), 5)
         self.assertEqual(select_pending(trials, 0, ""), [])
 
+    def test_ambiguous_repairs_and_formatting_only_changes_are_not_recorded_as_repairs(self) -> None:
+        for expression in [
+            " vec_avg(synthetic_vector) ",
+            "vec_avg(ts_delta(synthetic_vector, ordinary))",
+            "vec_avg(ts_delta(synthetic_vector, 0))",
+            "vec_avg(ts_delta(synthetic_vector, 2.5))",
+            "vec_avg(ts_delta(synthetic_vector, 20, ordinary))",
+            "vec_avg(ts_delta(synthetic_vector, d=20))",
+            "vec_avg(ts_corr(synthetic_vector, ordinary, 20))",
+        ]:
+            with self.subTest(expression=expression):
+                self.assertEqual(
+                    repair_temporal_vector(expression, {"synthetic_vector": "VECTOR"}), expression
+                )
+
+    def test_vector_preflight_rejects_raw_vectors_and_matrix_reduction(self) -> None:
+        ctx = Context(
+            id="synthetic", name="Synthetic", category="", description="", fields=(),
+            basics=(), groups=(), types={"v": "VECTOR", "m": "MATRIX"},
+            own=frozenset({"v", "m"}), names=frozenset({"v", "m"}), held={},
+        )
+        table = {
+            name: OperatorInfo(name, "", count, count, params)
+            for name, count, params in [
+                ("rank", 1, ("x",)), ("vec_avg", 1, ("x",)),
+                ("ts_delta", 2, ("x", "d")),
+            ]
+        }
+        for text in ["rank(v)", "ts_delta(v, 20)", "vec_avg(v + m)",
+                     "vec_avg(ts_delta(m, 20))", "vec_avg(vec_avg(v))"]:
+            with self.subTest(text=text), self.assertRaises(Rejected):
+                check(repair_temporal_vector(text, ctx.types), ctx, table)
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -39,6 +39,7 @@ import {
   Page,
   PageHeader,
   Panel,
+  Textarea,
 } from '@/ui/kit'
 import { Select } from '@/ui/overlay'
 
@@ -57,6 +58,7 @@ interface PowerPoolDraft {
   neutralizations: string[]
   /** Empty draws from every downloaded universe of the market. */
   universes: string[]
+  hypothesis: string
 }
 
 const useDraft = create<PowerPoolDraft>()(
@@ -73,6 +75,7 @@ const useDraft = create<PowerPoolDraft>()(
       onlyModel: false,
       neutralizations: [],
       universes: [],
+      hypothesis: '',
     }),
     {
       name: 'alpha-harness-power-pool-lab',
@@ -129,6 +132,7 @@ export function PowerPoolLabScreen() {
     universes,
     cores,
     simulations: draft.simulations ?? 0,
+    hypothesis: draft.hypothesis ?? '',
   }
   const { preview, current } = useLabPreview('power-pool-lab', body, powerPoolLab.preview)
   const plan = preview.data
@@ -176,6 +180,15 @@ export function PowerPoolLabScreen() {
       />
       <Panel title="Settings">
         <div className="flex flex-col gap-4">
+          <Fieldset legend="Research hypothesis">
+            <Textarea
+              aria-label="Research hypothesis"
+              value={draft.hypothesis ?? ''}
+              onChange={(event) => set({ hypothesis: event.target.value })}
+              maxLength={4000}
+              placeholder="Describe the economic mechanism and expected direction."
+            />
+          </Fieldset>
           <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
             <Fieldset legend="Model">
               <div className="flex flex-col gap-2">

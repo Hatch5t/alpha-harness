@@ -26,7 +26,7 @@ from ..catalog.queries import CatalogQueries, FieldFilter, Tuple4
 from ..db.models import Study, StudyStatus, Trial, TrialState, utcnow
 from ..llm.keys import BudgetExhaustedError, LLMError, LLMUnavailable
 from ..llm.prompts import POWER_POOL_LAB
-from ..llm.text import FENCE
+from ..llm.text import FENCE, estimate_tokens
 from ..tasks import spawn
 from . import scheduler, search
 from .fastexpr import (
@@ -193,7 +193,7 @@ def check(text: str, ctx: Context, table: dict[str, Any]) -> tuple[str, frozense
     """The canonical expression and the fields it uses, or :class:`Rejected`."""
     try:
         tree = parse(text)
-    except ParseError as exc:
+    except (ParseError, RecursionError) as exc:
         raise Rejected(f"Could not be read: {exc}") from exc
     if problems := validate(tree, table, set(ctx.names)):
         raise Rejected(problems[0])
@@ -206,6 +206,13 @@ def check(text: str, ctx: Context, table: dict[str, Any]) -> tuple[str, frozense
     if not used & (ctx.own - set(GROUPING_FIELDS)):
         raise Rejected(f"Uses no field of {ctx.id}.")
     for _, node, parent in walk_with_parents(tree):
+        if node.kind == "call" and node.value.startswith("vec_"):
+            if (
+                not node.args
+                or node.args[0].kind != "name"
+                or ctx.types.get(node.args[0].value) != "VECTOR"
+            ):
+                raise Rejected("A vec_ operator requires a direct, known VECTOR field.")
         if (
             node.kind == "name"
             and ctx.types.get(node.value) == "VECTOR"
@@ -354,6 +361,8 @@ def user_prompt(
                 run.hypothesis.strip()
                 or "Explore independent mechanisms supported by the selected fields."
             ),
+            "PREFERRED OPERATORS\n"
+            + ", ".join(name for name in run.favour_operators if name in operator_table(operators)),
             f"YOUR EARLIER ALPHAS ON {ctx.id}\n{memory}",
             f"Write {PER_CALL} new Power Pool Alphas that use {ctx.id}.",
         ]
@@ -379,6 +388,8 @@ def user_prompt(
 
 
 async def refill(optimizer: Optimizer, row: Study, want: int, waiting: bool) -> int:
+    if row.status != StudyStatus.RUNNING:
+        return 0
     async with optimizer.db.session() as session:
         # Only the written Alphas still waiting to be sent, not the whole task.
         ready = list(
@@ -397,27 +408,48 @@ async def refill(optimizer: Optimizer, row: Study, want: int, waiting: bool) -> 
         run = params_of(row, PowerPoolParams)
         llm = run.llm
         calls = int(llm.get("calls") or 0)
+        cap = max(3, 2 * -(-row.max_trials // PER_CALL))
+        stop = (
+            "the last 3 LLM calls wrote no new valid Alpha"
+            if int(llm.get("empty") or 0) >= 3
+            else (f"it reached {cap} LLM calls" if calls >= cap else None)
+        )
+        budget_wait = float(llm.get("blockedUntil") or 0) > time.time()
         # Sample at least two different datasets before spending the first ten
         # simulations. Earlier versions always sent the first dataset's candidates
         # and starved every later one under small task budgets.
-        exploring = calls < prefill_calls(row.max_trials, run.dataset_ids)
+        explored = sum(
+            int((llm.get("byDataset") or {}).get(dataset, {}).get("calls", 0)) > 0
+            for dataset in dict.fromkeys(run.dataset_ids)
+        )
+        # Legacy tasks may have only a total tally. Keep their parked work runnable.
+        if not llm.get("byDataset"):
+            explored = calls
+        exploring = (
+            explored < prefill_calls(row.max_trials, run.dataset_ids) and not budget_wait and not stop
+        )
+        dataset = func.coalesce(func.json_extract(Trial.params, "$.dataset"), "unknown")
+        allocated = dict(
+            (
+                await session.execute(
+                    select(dataset, func.count())
+                    .where(Trial.study_id == row.id, Trial.state != TrialState.PRUNED)
+                    .group_by(dataset)
+                )
+            ).tuples().all()
+        )
         batch = (
-            select_pending(ready, want, str(getattr(run, "hypothesis", "")))
+            select_pending(ready, want, run.hypothesis, allocated)
             if want > 0 and not exploring
             else []
         )
         sent = await scheduler.send_parked(optimizer, row, batch) if batch else 0
     left = len(ready) - sent
-    cap = max(3, 2 * -(-row.max_trials // PER_CALL))
-    stop = (
-        "the last 3 LLM calls wrote no new valid Alpha"
-        if int(llm.get("empty") or 0) >= 3
-        else (f"it reached {cap} LLM calls" if calls >= cap else None)
-    )
     busy = row.id in _calls and not _calls[row.id].done()
     if (
         not stop
         and not busy
+        and not budget_wait
         # Do not spend another LLM request after enough valid expressions
         # already exist to fill the requested simulation quota.
         and want > sent
@@ -433,7 +465,7 @@ async def refill(optimizer: Optimizer, row: Study, want: int, waiting: bool) -> 
 async def _pause(optimizer: Optimizer, study_id: int, message: str) -> None:
     async with optimizer.lock(study_id):
         row = await optimizer.get(study_id)
-        if row is None:
+        if row is None or row.status != StudyStatus.RUNNING:
             return
         await scheduler.finish(optimizer, study_id, StudyStatus.PAUSED, message)
         await optimizer.engine.drop_queued(row.task)
@@ -449,6 +481,8 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
         llm = dict(run.llm)
         by = dict(llm.get("byDataset") or {})
         ids = run.dataset_ids
+        if not ids:
+            return await _pause(optimizer, study_id, "Choose at least one downloaded dataset, then resume.")
         dataset = min(ids, key=lambda d: (by.get(d, {}).get("calls", 0), ids.index(d)))
         # The task's model first; with it out of budget or its provider down, the next one a
         # Key can run, most requests left first, so the run never sits waiting for a reset.
@@ -495,8 +529,12 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
         entry: dict[str, Any] = {}
         model = models[0]
         shown = 0
+        prompt_refused = 0
         for model in models:
             user, shown = user_prompt(ctx, operators, run, memory, offset, model.prompt_tokens)
+            if not shown or estimate_tokens(POWER_POOL_LAB + user) > model.prompt_tokens:
+                prompt_refused += 1
+                continue
             entry = {
                 "at": utcnow().isoformat(),
                 "dataset": dataset,
@@ -533,17 +571,24 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
                 entry["error"] = "The answer was not the JSON asked for: " + answer.text[:200]
             break
         else:
+            if prompt_refused == len(models):
+                return await _pause(
+                    optimizer, study_id,
+                    "No dataset fields fit the configured prompt budget. Increase Max Prompt Tokens, then resume.",
+                )
             if down is None:
                 # Every model is out of budget: wait for the soonest to come back.
                 _retry[study_id] = time.monotonic() + max(5.0, min(e.retry_after for e in spent))
-                if any(e.daily for e in spent):
-                    reason = (
-                        str(spent[0])
-                        if len(spent) == 1
-                        else f"all {len(spent)} models a Key can run have used their daily "
-                        "allowance. The task carries on when the first one resets."
-                    )
-                    await _note(optimizer, study_id, f"Waiting for LLM budget: {reason}")
+                reason = (
+                    str(spent[0])
+                    if len(spent) == 1
+                    else f"all {len(spent)} available models are out of budget. "
+                    "The task carries on when the first one resets."
+                )
+                await _note(
+                    optimizer, study_id, f"Waiting for LLM budget: {reason}",
+                    retry_after=max(5.0, min(e.retry_after for e in spent)),
+                )
                 return None
             # A busy provider passes: tried again in a minute, never counted toward a pause.
             _retry[study_id] = time.monotonic() + 60.0
@@ -618,6 +663,7 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
             # A call that failed showed the model nothing: the same fields go out again next
             # time, and it counts toward neither the call nor the empty-answer stops.
             if answered:
+                llm.pop("blockedUntil", None)
                 llm["calls"] = int(llm.get("calls") or 0) + 1
                 llm["empty"] = 0 if valid else int(llm.get("empty") or 0) + 1
                 by = dict(llm.get("byDataset") or {})
@@ -643,11 +689,17 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
         _retry[study_id] = time.monotonic() + 60.0
 
 
-async def _note(optimizer: Optimizer, study_id: int, message: str) -> None:
+async def _note(
+    optimizer: Optimizer, study_id: int, message: str, *, retry_after: float | None = None
+) -> None:
     async with optimizer.db.session() as session:
         stored = await session.get(Study, study_id)
         if stored is not None:
             stored.message = message
+            if retry_after is not None:
+                params = params_of(stored, PowerPoolParams)
+                params.llm = dict(params.llm) | {"blockedUntil": time.time() + retry_after}
+                stored.sampler_params = params.dump()
     await optimizer.notify()
 
 
@@ -667,3 +719,4 @@ def parse_alphas(text: str) -> list[dict[str, Any]]:
         if isinstance(payload, list):
             return [a for a in payload if isinstance(a, dict) and a.get("expression")]
     return []
+

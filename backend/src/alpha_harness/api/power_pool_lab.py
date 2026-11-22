@@ -47,6 +47,8 @@ class PowerPoolRequest(BaseModel):
     simulations: int = Field(default=0, ge=0, le=search.MAX_SIMULATIONS)
     #: The Data Explorer's filter the datasets were chosen under: only fields it shows are used.
     field_filter: FieldFilter | None = None
+    hypothesis: str = Field(default="", max_length=4000)
+    favour_operators: list[str] = Field(default_factory=list, max_length=30)
 
 
 class PowerPoolModel(Out):
@@ -143,6 +145,8 @@ async def _plan(body: PowerPoolRequest, state: Any) -> dict[str, Any]:
         delay=body.delay,
         universes=universes,
         neutralizations=neutralizations,
+        hypothesis=body.hypothesis,
+        favour_operators=body.favour_operators,
     )
     if universes:
         for dataset in body.dataset_ids:
@@ -175,7 +179,10 @@ async def _plan(body: PowerPoolRequest, state: Any) -> dict[str, Any]:
                         f"{info.prompt_tokens:,} prompt tokens, too few to work with. Raise its "
                         "Max Prompt Tokens, or choose another dataset."
                     )
-    calls = -(-body.simulations // power_pool.PER_CALL)
+    calls = max(
+        -(-body.simulations // power_pool.PER_CALL),
+        power_pool.prefill_calls(body.simulations, body.dataset_ids),
+    )
     left = models[info.ref]["remainingToday"] if info and info.ref in models else None
     if info is not None and left is not None and calls > left:
         warnings.append(
@@ -225,6 +232,8 @@ async def add_task(body: PowerPoolRequest, state: State) -> AddedTask:
             ),
             model=plan["model"],
             only_model=body.only_model,
+            hypothesis=body.hypothesis,
+            favour_operators=body.favour_operators,
             cores=body.cores,
             llm={"calls": 0},
         ),

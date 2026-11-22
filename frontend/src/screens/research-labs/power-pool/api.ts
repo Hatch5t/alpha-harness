@@ -25,6 +25,7 @@ export interface PowerPoolRequest {
   universes: string[]
   cores: number
   simulations: number
+  hypothesis?: string
 }
 
 const B = '/api/power-pool-lab'

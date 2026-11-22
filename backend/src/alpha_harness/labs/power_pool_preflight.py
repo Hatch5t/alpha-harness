@@ -53,9 +53,10 @@ def repair_temporal_vector(expression: str, types: dict[str, str]) -> str:
     """
     try:
         tree = parse(expression)
-    except ParseError:
+    except ParseError, RecursionError:
         return expression
 
+    repaired = False
     # Work bottom-up so paths remain valid after replacing an inner subtree.
     for path, _ in reversed(walk(tree)):
         node = node_at(tree, path)
@@ -64,15 +65,24 @@ def repair_temporal_vector(expression: str, types: dict[str, str]) -> str:
         if len(node.args) != 1 or node.kwargs:
             continue
         child = node.args[0]
-        if child.kind != "call" or child.value not in _SCALAR_TIMESERIES or not child.args:
+        if (
+            child.kind != "call"
+            or child.value not in _SCALAR_TIMESERIES
+            or len(child.args) != 2
+            or child.kwargs
+        ):
             continue
         field = child.args[0]
+        lookback = child.args[1]
+        if lookback.kind != "num" or not lookback.value.isdecimal() or int(lookback.value) < 1:
+            continue
         if field.kind != "name" or types.get(field.value) != "VECTOR":
             continue
         aggregation = replace(node, args=(field,))
         moved = replace(child, args=(aggregation, *child.args[1:]))
         tree = replace_at(tree, path, moved)
-    return render(tree)
+        repaired = True
+    return render(tree) if repaired else expression
 
 
 def prefill_calls(max_trials: int, dataset_ids: list[str]) -> int:
@@ -125,11 +135,13 @@ def _priority(expression: str, hypothesis: str) -> int:
     return score - max(0, len(operators) - 4)
 
 
-def select_pending(ready: list[Trial], want: int, hypothesis: str) -> list[Trial]:
+def select_pending(
+    ready: list[Trial], want: int, hypothesis: str, allocated: dict[str, int] | None = None
+) -> list[Trial]:
     """Choose unsimulated expressions across datasets and structural families.
 
-    For each pass, pick at most one expression per available dataset, preferring
-    previously unselected operator families. Every tie breaks by trial number.
+    Prefer the least-served available dataset across persisted dispatch history,
+    then previously unselected operator families. Ties are deterministic.
     This is a pre-simulation allocation heuristic, not an estimated quality score.
     """
     if want <= 0:
@@ -143,23 +155,23 @@ def select_pending(ready: list[Trial], want: int, hypothesis: str) -> list[Trial
             key=lambda trial: (-_priority(trial.expression or "", hypothesis), trial.number)
         )
 
-    datasets = sorted(buckets)
+    counts = defaultdict(int, allocated or {})
     selected: list[Trial] = []
     families: set[tuple[str, str]] = set()
     while len(selected) < want and any(buckets.values()):
-        for dataset in datasets:
-            candidates = buckets[dataset]
-            if not candidates or len(selected) >= want:
-                continue
-            index = next(
-                (
-                    i
-                    for i, candidate in enumerate(candidates)
-                    if (dataset, _profile(candidate.expression or "")[0]) not in families
-                ),
-                0,
-            )
-            chosen = candidates.pop(index)
-            selected.append(chosen)
-            families.add((dataset, _profile(chosen.expression or "")[0]))
+        dataset = min((d for d in buckets if buckets[d]), key=lambda d: (counts[d], d))
+        candidates = buckets[dataset]
+        index = next(
+            (
+                i
+                for i, candidate in enumerate(candidates)
+                if (dataset, _profile(candidate.expression or "")[0]) not in families
+            ),
+            0,
+        )
+        chosen = candidates.pop(index)
+        selected.append(chosen)
+        counts[dataset] += 1
+        families.add((dataset, _profile(chosen.expression or "")[0]))
     return selected
+

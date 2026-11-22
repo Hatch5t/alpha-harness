@@ -21,6 +21,7 @@ pnpm --silent --dir frontend/tools/codegen exec openapi-typescript "$work/openap
 if [ "$mode" = check ]; then
   if ! cmp -s "$work/generated.ts" "$target"; then
     echo "$target is stale: the backend's API changed. Run: lefthook run format" >&2
+    diff -u "$target" "$work/generated.ts" || true
     exit 1
   fi
   if ! cmp -s "$work/platform.ts" "$platform"; then

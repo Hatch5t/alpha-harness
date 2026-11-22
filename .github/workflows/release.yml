@@ -25,7 +25,7 @@ name: release
 on:
   push:
     tags: ["v*"]
-    branches: ["codex/macos-research-build"]
+    branches: ["codex/macos-research-build", "codex/grandmaster-preflight-v1"]
   workflow_dispatch:
     inputs:
       version:
@@ -74,7 +74,7 @@ jobs:
         id: version
         shell: bash
         env:
-          REF: ${{ inputs.version || (github.ref_type == 'tag' && github.ref_name) || '2026.11.22rc2' }}
+          REF: ${{ inputs.version || (github.ref_type == 'tag' && github.ref_name) || '2026.11.22rc3' }}
         run: |
           uv run --with packaging --no-project --quiet python - <<'PY'
           import os, pathlib
@@ -323,12 +323,26 @@ jobs:
           sys.exit(1 if too_new else 0)
           PY
 
+      - name: Fetch wheel for native startup verification
+        if: matrix.target == 'aarch64-apple-darwin'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: wheel
+          path: ${{ runner.temp }}/smoke-wheel
+      - name: Verify Apple Silicon app startup and restart
+        if: matrix.target == 'aarch64-apple-darwin'
+        env:
+          SMOKE_WHEEL_DIR: ${{ runner.temp }}/smoke-wheel
+        run: |
+          uv run --no-project --python 3.14 python desktop/tools/smoke_macos.py \
+            "desktop/src-tauri/target/$TARGET/release/bundle/macos/AlphaHarness.app/Contents/MacOS/alpha-harness"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: desktop-${{ matrix.asset }}
           path: ${{ matrix.asset }}
 
   publish:
+    if: github.ref_name != 'codex/grandmaster-preflight-v1'
     needs: [wheel, desktop]
     runs-on: ubuntu-latest
     permissions:
