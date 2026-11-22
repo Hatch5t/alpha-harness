@@ -32,7 +32,18 @@ KEY_CONTEXT = "google-api-key"
 
 
 class LLMError(Exception):
-    """Something wrong with the LLM setup, phrased for whoever has to fix it."""
+    """LLM failure. Structured diagnostics must never include provider payloads."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider_status: int | None = None,
+        provider_category: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.provider_status = provider_status
+        self.provider_category = provider_category
 
 
 class LLMUnavailable(LLMError):
