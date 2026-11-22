@@ -93,14 +93,14 @@ class BoundedProviderAttemptTests(unittest.IsolatedAsyncioTestCase):
             patch.object(LLMService, "_client", return_value=client),
             self.assertRaises(LLMError) as caught,
         ):
-                await service.generate(
-                    system="test",
-                    user="test",
-                    model_ref="google:gemini-3.5-flash-lite",
-                    response_schema={"type": "object"},
-                    temperature=1.0,
-                    max_provider_attempts=1,
-                )
+            await service.generate(
+                system="test",
+                user="test",
+                model_ref="google:gemini-3.5-flash-lite",
+                response_schema={"type": "object"},
+                temperature=1.0,
+                max_provider_attempts=1,
+            )
         self.assertEqual(caught.exception.provider_category, category)
         self.assertEqual(caught.exception.provider_status, status)
         client.generate.assert_awaited_once()
