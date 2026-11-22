@@ -2,12 +2,16 @@
 
 import json
 import unittest
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import AsyncMock, patch
 
 from pydantic import ValidationError
 from pydantic.alias_generators import to_camel
 
+from alpha_harness.llm.keys import LLMError
 from alpha_harness.llm.openai_compat import ProviderError
-from alpha_harness.llm.service import _provider_category
+from alpha_harness.llm.service import LLMService, _provider_category
 from alpha_harness.research.io import GENERATION_RESPONSE_SCHEMA
 from alpha_harness.research.schemas import Generated, GeneratedAlpha, Hypothesis
 
@@ -69,6 +73,45 @@ class GenerationProviderSchemaTests(unittest.TestCase):
         self.assertEqual(
             _provider_category(ProviderError(503, "server busy")), "provider_unavailable"
         )
+
+
+class BoundedProviderAttemptTests(unittest.IsolatedAsyncioTestCase):
+    async def check_rejection(self, status: int, detail: str, category: str) -> None:
+        service: Any = object.__new__(LLMService)
+        service._default_sampling = set()
+        service.model_for = lambda _: SimpleNamespace(
+            provider="google", id="gemini-3.5-flash-lite", ref="google:gemini-3.5-flash-lite"
+        )
+        service.keys = SimpleNamespace(
+            choose=AsyncMock(return_value=SimpleNamespace(key_id=1)),
+            secret=AsyncMock(return_value="fake-secret"),
+            mark=AsyncMock(),
+        )
+        service.ledger = SimpleNamespace(penalise=AsyncMock(), record_tokens=AsyncMock())
+        client = SimpleNamespace(generate=AsyncMock(side_effect=ProviderError(status, detail)))
+        with patch.object(LLMService, "_client", return_value=client):
+            with self.assertRaises(LLMError) as caught:
+                await service.generate(
+                    system="test",
+                    user="test",
+                    model_ref="google:gemini-3.5-flash-lite",
+                    response_schema={"type": "object"},
+                    temperature=1.0,
+                    max_provider_attempts=1,
+                )
+        self.assertEqual(caught.exception.provider_category, category)
+        self.assertEqual(caught.exception.provider_status, status)
+        client.generate.assert_awaited_once()
+        service.keys.choose.assert_awaited_once()
+
+    async def test_capped_temperature_rejection_keeps_reason_and_does_not_retry(self) -> None:
+        await self.check_rejection(400, "temperature unsupported", "temperature_rejected")
+
+    async def test_capped_quota_rejection_keeps_reason_and_does_not_retry(self) -> None:
+        await self.check_rejection(429, "requests per minute quota", "rate_limited")
+
+    async def test_capped_key_refusal_keeps_reason_and_does_not_retry(self) -> None:
+        await self.check_rejection(403, "permission denied", "access_refused")
 
 
 if __name__ == "__main__":
