@@ -46,10 +46,13 @@ class PowerPoolRuntimeTests(unittest.IsolatedAsyncioTestCase):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         self.db = Database(Path(folder.name) / "harness.db")
+        self.db_path = Path(folder.name) / "harness.db"
         self.addAsyncCleanup(self.db.dispose)
         await self.db.create_all()
         self.engine = SimpleNamespace(
-            enqueue=AsyncMock(side_effect=lambda requests, **_: {"outcomes": [{} for _ in requests]}),
+            enqueue=AsyncMock(
+                side_effect=lambda requests, **_: {"outcomes": [{} for _ in requests]}
+            ),
             drop_queued=AsyncMock(return_value=0), set_quota=AsyncMock(), slots=8,
         )
         self.model = ModelInfo(id="synthetic", provider="google", rpm=10, rpd=10,
@@ -131,6 +134,11 @@ class PowerPoolRuntimeTests(unittest.IsolatedAsyncioTestCase):
             ready = (await session.scalars(select(Trial).order_by(Trial.number).limit(10))).all()
             for row in ready:
                 row.state = TrialState.COMPLETE
+        await self.db.dispose()
+        self.db = Database(self.db_path)
+        self.addAsyncCleanup(self.db.dispose)
+        power_pool._calls.clear()
+        power_pool._retry.clear()
         self.optimizer = self.new_optimizer()
         self.assertEqual(await scheduler.advance(self.optimizer, self.study_id), 10)
         selected = [t for t in await self.rows() if t.state == TrialState.QUEUED]
@@ -218,6 +226,22 @@ class PowerPoolRuntimeTests(unittest.IsolatedAsyncioTestCase):
         row = await self.optimizer.get(self.study_id)
         self.assertEqual(row.status, StudyStatus.PAUSED)
         self.assertIn("prompt budget", row.message)
+
+    async def test_pause_reparks_unsent_trials_and_resume_preserves_their_identity(self) -> None:
+        self.llm.generate.side_effect = self.generate
+        await self.write_once()
+        await self.write_once()
+        await scheduler.advance(self.optimizer, self.study_id)
+        before = {t.number for t in await self.rows() if t.state == TrialState.QUEUED}
+        with patch.object(scheduler, "start_waiting", new=AsyncMock()):
+            await scheduler.pause(self.optimizer, self.study_id)
+        self.assertTrue(all(t.state == TrialState.PRUNED for t in await self.rows()))
+        await self.optimizer.set_status(self.study_id, StudyStatus.RUNNING)
+        await scheduler.advance(self.optimizer, self.study_id)
+        after = {t.number for t in await self.rows() if t.state == TrialState.QUEUED}
+        self.assertEqual(before, after)
+        self.assertEqual(len(await self.rows()), 40)
+        self.assertEqual(self.llm.generate.await_count, 2)
 
     def test_more_datasets_than_slots_do_not_starve_on_repeated_windows(self) -> None:
         ready = [SimpleNamespace(number=i, params={"dataset": f"D{i:02}"}, expression="rank(x)")

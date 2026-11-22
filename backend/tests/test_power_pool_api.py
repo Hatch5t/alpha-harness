@@ -4,11 +4,12 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from test_power_pool_runtime import OPERATORS, context
+
 from alpha_harness.api import power_pool_lab
 from alpha_harness.labs.launch import AddedTask
 from alpha_harness.llm.registry import ModelInfo
 
-from test_power_pool_runtime import OPERATORS, context
 
 
 class PowerPoolApiTests(unittest.IsolatedAsyncioTestCase):
@@ -30,13 +31,22 @@ class PowerPoolApiTests(unittest.IsolatedAsyncioTestCase):
             favour_operators=["ts_delta", "unavailable_operator"],
         )
         with (
-            patch.object(power_pool_lab, "account_operators", new=AsyncMock(return_value=OPERATORS)),
+            patch.object(
+                power_pool_lab, "account_operators", new=AsyncMock(return_value=OPERATORS)
+            ),
             patch.object(power_pool_lab, "legal_choices", return_value={
                 "neutralization": {"choices": [{"value": "INDUSTRY"}]},
             }),
-            patch.object(power_pool_lab, "synced_universes", new=AsyncMock(return_value=["TOP3000"])),
-            patch.object(power_pool_lab.power_pool, "context_for", new=AsyncMock(return_value=context("A"))),
-            patch.object(power_pool_lab, "add_study", new=AsyncMock(return_value=AddedTask(id=1, name="synthetic"))) as add,
+            patch.object(
+                power_pool_lab, "synced_universes", new=AsyncMock(return_value=["TOP3000"])
+            ),
+            patch.object(
+                power_pool_lab.power_pool, "context_for", new=AsyncMock(return_value=context("A"))
+            ),
+            patch.object(
+                power_pool_lab, "add_study",
+                new=AsyncMock(return_value=AddedTask(id=1, name="synthetic")),
+            ) as add,
         ):
             preview = await power_pool_lab.preview(body, state)
             self.assertEqual(preview.problems, [])

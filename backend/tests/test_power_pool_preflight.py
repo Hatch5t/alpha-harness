@@ -140,7 +140,7 @@ class PowerPoolPreflightTests(unittest.TestCase):
         self.assertEqual(len(select_pending(trials, 5, "Test value ranking.")), 5)
         self.assertEqual(select_pending(trials, 0, ""), [])
 
-    def test_ambiguous_repairs_and_formatting_only_changes_are_not_recorded_as_repairs(self) -> None:
+    def test_ambiguous_and_formatting_only_changes_are_not_repairs(self) -> None:
         for expression in [
             " vec_avg(synthetic_vector) ",
             "vec_avg(ts_delta(synthetic_vector, ordinary))",

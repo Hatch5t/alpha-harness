@@ -206,13 +206,16 @@ def check(text: str, ctx: Context, table: dict[str, Any]) -> tuple[str, frozense
     if not used & (ctx.own - set(GROUPING_FIELDS)):
         raise Rejected(f"Uses no field of {ctx.id}.")
     for _, node, parent in walk_with_parents(tree):
-        if node.kind == "call" and node.value.startswith("vec_"):
-            if (
+        if (
+            node.kind == "call"
+            and node.value.startswith("vec_")
+            and (
                 not node.args
                 or node.args[0].kind != "name"
                 or ctx.types.get(node.args[0].value) != "VECTOR"
-            ):
-                raise Rejected("A vec_ operator requires a direct, known VECTOR field.")
+            )
+        ):
+            raise Rejected("A vec_ operator requires a direct, known VECTOR field.")
         if (
             node.kind == "name"
             and ctx.types.get(node.value) == "VECTOR"
@@ -426,7 +429,9 @@ async def refill(optimizer: Optimizer, row: Study, want: int, waiting: bool) -> 
         if not llm.get("byDataset"):
             explored = calls
         exploring = (
-            explored < prefill_calls(row.max_trials, run.dataset_ids) and not budget_wait and not stop
+            explored < prefill_calls(row.max_trials, run.dataset_ids)
+            and not budget_wait
+            and not stop
         )
         dataset = func.coalesce(func.json_extract(Trial.params, "$.dataset"), "unknown")
         allocated = dict(
@@ -482,7 +487,9 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
         by = dict(llm.get("byDataset") or {})
         ids = run.dataset_ids
         if not ids:
-            return await _pause(optimizer, study_id, "Choose at least one downloaded dataset, then resume.")
+            return await _pause(
+                optimizer, study_id, "Choose at least one downloaded dataset, then resume."
+            )
         dataset = min(ids, key=lambda d: (by.get(d, {}).get("calls", 0), ids.index(d)))
         # The task's model first; with it out of budget or its provider down, the next one a
         # Key can run, most requests left first, so the run never sits waiting for a reset.
@@ -574,7 +581,8 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
             if prompt_refused == len(models):
                 return await _pause(
                     optimizer, study_id,
-                    "No dataset fields fit the configured prompt budget. Increase Max Prompt Tokens, then resume.",
+                    "No dataset fields fit the configured prompt budget. "
+                    "Increase Max Prompt Tokens, then resume.",
                 )
             if down is None:
                 # Every model is out of budget: wait for the soonest to come back.
