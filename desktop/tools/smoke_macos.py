@@ -1,7 +1,7 @@
 """Boot the release launcher twice against disposable, credential-free local state."""
 
-import json
 import hashlib
+import json
 import os
 import re
 import sqlite3
@@ -40,9 +40,11 @@ def main() -> None:
         wheel = next(wheel_dir.glob("*.whl"))
         digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
         assert digest == os.environ["ALPHA_HARNESS_WHEEL_SHA256"]
+        requirements = root / "smoke-requirements.txt"
+        requirements.write_text(wheel.as_uri() + " --hash=sha256:" + digest + "\n")
         subprocess.run(
             ["uv", "pip", "install", "--require-hashes", "--python", str(python), "-c",
-             str(wheel_dir / "constraints.txt"), wheel.as_uri() + "#sha256=" + digest],
+             str(wheel_dir / "constraints.txt"), "-r", str(requirements)],
             check=True,
         )
         (home / "slot-a.json").write_text(json.dumps({"version": version, "served": True}))
