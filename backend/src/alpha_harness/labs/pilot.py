@@ -11,7 +11,7 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from ..brain.schemas import FULL_MODE
 from ..db.models import Study, Trial, TrialState
