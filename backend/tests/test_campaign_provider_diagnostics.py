@@ -28,7 +28,11 @@ class GenerationProviderSchemaTests(unittest.TestCase):
             )
             self.assertEqual(
                 set(item["required"]),
-                {to_camel(name) for name, field in model.model_fields.items() if field.is_required()},
+                {
+                    to_camel(name)
+                    for name, field in model.model_fields.items()
+                    if field.is_required()
+                },
             )
 
     def test_local_validation_still_rejects_invalid_alpha_references(self) -> None:
@@ -62,7 +66,9 @@ class GenerationProviderSchemaTests(unittest.TestCase):
             "output_limit_rejected",
         )
         self.assertEqual(_provider_category(ProviderError(403, "private key")), "access_refused")
-        self.assertEqual(_provider_category(ProviderError(503, "server busy")), "provider_unavailable")
+        self.assertEqual(
+            _provider_category(ProviderError(503, "server busy")), "provider_unavailable"
+        )
 
 
 if __name__ == "__main__":
