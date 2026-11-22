@@ -215,6 +215,20 @@ class ResearchService:
         if exists is None:
             session.add(ResearchEvent(campaign_id=campaign_id, key=key, kind=kind, payload=payload))
 
+    async def _finish_failed_generation(self, row: ResearchCampaign) -> bool:
+        outcome = await self.generation_outcome(row)
+        if not outcome["generation"]["allFailed"]:
+            return False
+        async with self.db.session() as session:
+            current = await session.get(ResearchCampaign, row.id)
+            if current.status == "RUNNING":
+                current.status, current.message = "FAILED", GENERATION_FAILED
+                current.cursor = current.cursor | {"stage": "FAILED"}
+                study = await session.get(Study, row.study_id)
+                study.status, study.finished_at = StudyStatus.FAILED, utcnow()
+                await self.event(session, row.id, "generation-failed", "generation_failed", {})
+        return True
+
     async def _cursor(self, campaign_id: int, **changes: Any) -> None:
         async with self.db.session() as session:
             row = await session.get(ResearchCampaign, campaign_id)
@@ -568,18 +582,7 @@ class ResearchService:
         wanted = [item["datasetId"] for item in row.cursor.get("backlog", [])][:maximum]
         dataset = next((key for key in wanted if key not in done), None)
         if dataset is None:
-            outcome = await self.generation_outcome(row)
-            if outcome["generation"]["allFailed"]:
-                async with self.db.session() as session:
-                    current = await session.get(ResearchCampaign, row.id)
-                    if current.status == "RUNNING":
-                        current.status, current.message = "FAILED", GENERATION_FAILED
-                        current.cursor = current.cursor | {"stage": "FAILED"}
-                        study = await session.get(Study, row.study_id)
-                        study.status, study.finished_at = StudyStatus.FAILED, utcnow()
-                        await self.event(
-                            session, row.id, "generation-failed", "generation_failed", {}
-                        )
+            if await self._finish_failed_generation(row):
                 return
             await self._cursor(row.id, stage="QUICK")
             return
@@ -1539,6 +1542,10 @@ class ResearchService:
         await self._cursor(row.id, stage="DECIDE", recommended=len(selected))
 
     async def _decide(self, row: ResearchCampaign, spec: CampaignSpec) -> None:
+        # Older interrupted cursors can resume after GENERATE. Protect the persisted
+        # campaign and Study outcome as well as the API's legacy display projection.
+        if await self._finish_failed_generation(row):
+            return
         spent = await budget.usage(self.db, row.id, row.mode)
         async with self.db.session() as session:
             candidates = list(
