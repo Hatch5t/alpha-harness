@@ -12,6 +12,7 @@ overlapping earlier draft; it should not be merged wholesale over that fix.
 | Terminal campaigns cannot reset requests | Already covered in #8; no budget refunds or replay added. |
 | Schema drift assertions | Add required-field/property checks against the Pydantic models. |
 | Configured Gemini model integration | Add real SDK/production adapter test with the configured model ID, intercepted by MockTransport. |
+| Local protocol type strictness | Independent audit reproduced coercion of string/boolean hypothesis indices. Require strict Pydantic validation for live model output and retain known usage on rejection. |
 | UI terminal cancel behavior | #8 already treats FAILED as terminal and provides an unsent recovery draft. |
 
 The final-stage regression covers a persisted RUNNING/DECIDE cursor with an uncertain

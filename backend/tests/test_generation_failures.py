@@ -293,6 +293,15 @@ class GenerationFailureTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.requests[0]["model"], "gemini-3.5-flash-lite")
         self.assertEqual(self.requests[0]["max_tokens"], 4096)
         self.assertNotIn("max_completion_tokens", self.requests[0])
+        for index in ["0", True]:
+            payload = generated.model_dump(mode="json")
+            payload["alphas"][0]["hypothesis"] = index
+            self.completion(json.dumps(payload))
+            with self.assertRaises(LLMError) as caught:
+                await self.live_io.generate(self.spec, ctx, "Synthetic research prompt")
+            self.assertEqual(caught.exception.diagnostic.category, "schema_validation")
+            self.assertEqual(caught.exception.observed["tokens"], 30)
+        self.assertEqual(len(self.requests), 3)
 
     async def test_schema_properties_and_required_fields_do_not_drift(self) -> None:
         schema = Generated.provider_schema()

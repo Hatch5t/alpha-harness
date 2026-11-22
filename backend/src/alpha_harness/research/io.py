@@ -364,7 +364,7 @@ class ResearchIO:
                     )
                     raise LLMError(diagnostic.message, diagnostic=diagnostic, observed=observed)
             try:
-                generated = Generated.model_validate(payload)
+                generated = Generated.model_validate(payload, strict=True)
             except ValidationError:
                 diagnostic = failure("schema_validation")
                 raise LLMError(
