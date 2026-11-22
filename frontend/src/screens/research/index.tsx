@@ -533,7 +533,7 @@ export function ResearchScreen() {
                   Resume within frozen caps
                 </Button>
               ) : null}
-              {!['COMPLETE', 'CANCELLED'].includes(data.status) ? (
+              {!['COMPLETE', 'CANCELLED', 'FAILED'].includes(data.status) ? (
                 <Button disabled={busy} onClick={() => void act(() => control('cancel'))}>
                   Cancel remaining work
                 </Button>
