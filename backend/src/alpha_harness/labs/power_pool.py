@@ -414,9 +414,7 @@ async def refill(optimizer: Optimizer, row: Study, want: int, waiting: bool) -> 
         calls = int(llm.get("calls") or 0)
         cap = max(3, 2 * -(-row.max_trials // PER_CALL))
         pilot_spent = int(llm.get("pilotRequestsStarted") or 0)
-        pilot_exhausted = (
-            run.pilot and pilot_spent >= min(MAX_LLM, run.pilot_llm_cap)
-        )
+        pilot_exhausted = run.pilot and pilot_spent >= min(MAX_LLM, run.pilot_llm_cap)
         stop = (
             "the controlled pilot used its permitted LLM requests"
             if pilot_exhausted
