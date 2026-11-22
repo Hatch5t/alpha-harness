@@ -11,8 +11,8 @@ candidate generation or BRAIN simulation.
 The private incident export retained only `LLMError`, so it could not distinguish this
 from authentication, quota or transport errors. The application log did not retain the
 HTTP details. Read-only reconstruction of historical SQLite journal snapshots recovered
-the schema-complexity error alongside the two failure events. A later successful key
-check had cleared the current key error field. No private export, journal, prompt,
+the schema-complexity error alongside the two failure events. A later successful model
+call had cleared the current key error field. No private export, journal, prompt,
 expression, response, database or credential belongs in this repository.
 
 Two independent application defects amplified the provider rejection:

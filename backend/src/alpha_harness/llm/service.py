@@ -300,7 +300,7 @@ class LLMService:
                 (usage.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0
             ) or max(0, reported - prompt - output)
             total = reported or estimate
-            if usage:
+            if reported or prompt or output or thought:
                 await self.ledger.record_tokens(slot, model, reported or prompt + output + thought)
             await self.keys.mark(key_id)
 

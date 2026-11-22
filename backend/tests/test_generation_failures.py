@@ -226,12 +226,16 @@ class GenerationFailureTests(unittest.IsolatedAsyncioTestCase):
         self.forbidden.assert_not_awaited()
 
     async def test_successful_http_without_usage_does_not_invent_token_counts(self) -> None:
-        self.completion("not json")
-        self.body.pop("usage")
-        with self.assertRaises(LLMError) as caught:
-            await self.call()
-        self.assertEqual(caught.exception.observed, {"requests": 1})
-        self.assertEqual(caught.exception.diagnostic.category, "malformed_response")
+        for text, category in [("not json", "malformed_response"), ("", "empty_response")]:
+            self.completion(text)
+            self.body.pop("usage")
+            with self.assertRaises(LLMError) as caught:
+                await self.call()
+            self.assertEqual(caught.exception.observed, {"requests": 1})
+            self.assertEqual(caught.exception.diagnostic.category, category)
+        async with self.db.session() as session:
+            usage = await session.scalar(select(KeyUsage).where(KeyUsage.model == "synthetic"))
+            self.assertEqual((usage.requests, usage.tokens, usage.reported_requests), (2, 0, 0))
 
     async def test_compact_wire_schema_keeps_structure_and_strict_local_bounds(self) -> None:
         ctx = (await self.service._ios["offline"].contexts(self.spec))[0]
