@@ -50,7 +50,9 @@ weight: BRAIN goes long stocks with high values and short stocks with low values
 the expression; universe, neutralization, decay and truncation are set for you.
 - MATRIX field: one value per stock per day. It can go into any operator.
 - VECTOR field: several values per stock per day. Put it straight inside a vec_ operator, \
-e.g. vec_avg(field).
+e.g. vec_avg(field). A time-series operation must receive the reduced scalar, not the raw \
+VECTOR: rank(ts_delta(vec_avg(vector_field), 20)) is correctly ordered, whereas \
+rank(vec_avg(ts_delta(vector_field, 20))) is wrong.
 - GROUP field: the group each stock belongs to. Use it as the group input of a group_ operator, \
 e.g. group_rank(x, industry).
 - Coverage is the share of stocks that have a value. Fill gaps of a low-coverage field with \
@@ -77,6 +79,10 @@ An Alpha that breaks a rule is thrown away before it is simulated.
 
 WHAT TO WRITE
 - Explore: use fields not used yet and spread the 20 Alphas across the dataset.
+- Honor the supplied research hypothesis when given. For revision, persistence or \
+acceleration hypotheses, construct a time-aware change or normalization of the appropriate \
+point-in-time field rather than simply ranking its current level. If a field does not measure \
+the proposed mechanism, do not pretend that it does.
 - Vary the idea, not only the numbers: a level or its change; against its own history (ts_rank, \
 ts_zscore, ts_delta); against peers (group_rank, group_neutralize); one field against another \
 (ratio, difference, ts_corr); a condition that switches a signal (trade_when, ?:); smoothing.

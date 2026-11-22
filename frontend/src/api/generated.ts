@@ -4155,7 +4155,14 @@ export interface components {
             dataset_ids?: string[];
             /** Delay */
             delay: number;
+            /** Favour Operators */
+            favour_operators?: string[];
             field_filter?: components["schemas"]["FieldFilter"] | null;
+            /**
+             * Hypothesis
+             * @default
+             */
+            hypothesis: string;
             /** Model */
             model?: string | null;
             /** Neutralizations */

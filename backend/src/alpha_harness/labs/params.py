@@ -107,6 +107,10 @@ class PowerPoolParams(TaskParams):
     only_model: bool = False
     #: Running LLM tallies: ``calls``, ``empty``, ``failed``, ``byDataset`` and ``byModel``.
     llm: dict[str, Any] = Field(default_factory=dict)
+    #: User's economic mechanism, passed to the LLM and to pre-simulation selection.
+    hypothesis: str = ""
+    #: Optional operator preferences, forwarded only when valid for BRAIN.
+    favour_operators: list[str] = Field(default_factory=list)
     #: The last hundred LLM calls, for the task's detail view.
     calls: list[dict[str, Any]] = Field(default_factory=list)
 
