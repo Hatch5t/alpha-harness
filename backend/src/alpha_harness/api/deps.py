@@ -26,6 +26,7 @@ from ..brain.errors import (
 )
 from ..labs.objectives import StudyError, StudyNotFoundError
 from ..llm.keys import BudgetExhaustedError, LLMError, NoKeysError
+from ..research.service import ResearchError
 from ..state import AppState
 
 
@@ -65,6 +66,7 @@ def _problem(
 #: ``retryable`` of ``None`` omits the key, which is not the same as ``False``: the client
 #: then falls back to "retryable if 5xx", right for a poll timeout and wrong for a daily limit.
 SIMPLE: dict[type[Exception], tuple[int, str, str | None, bool | None]] = {
+    ResearchError: (422, "research_refused", None, False),
     BrainAuthError: (
         401,
         "not_authenticated",

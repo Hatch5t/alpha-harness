@@ -47,6 +47,7 @@ class Answer:
     output_tokens: int
     thinking_tokens: int
     total_tokens: int
+    usage_reported: bool = True
 
     @property
     def usage(self) -> dict[str, int]:
@@ -58,7 +59,7 @@ def _status(exc: Exception) -> int | None:
 
 
 def _is_rate_limit(exc: Exception) -> tuple[bool, bool]:
-    """``(rate limited, daily)``. Only the provider's details say which limit was hit."""
+    "``(rate limited, daily)``. Only the provider's details say which limit was hit."
     text = str(exc).lower()
     if _out_of_credit(text):
         return False, False
@@ -100,13 +101,13 @@ def _rejects_temperature(exc: Exception) -> bool:
 
 
 def _refused(exc: Exception) -> bool:
-    """Whether the key was turned away rather than the request: another key may get in."""
+    "Whether the key was turned away rather than the request: another key may get in."
     text = str(exc).lower()
     return _status(exc) in (401, 403) or "api_key_invalid" in text or _out_of_credit(text)
 
 
 def _out_of_credit(text: str) -> bool:
-    """An account with no credit left: a ``429`` naming a quota, but no wait ends it."""
+    "An account with no credit left: a ``429`` naming a quota, but no wait ends it."
     return "insufficient_quota" in text
 
 
@@ -184,7 +185,7 @@ class LLMService:
         return sorted(found, key=lambda m: -m["remainingToday"])
 
     def model_for(self, ref: str | None) -> ModelInfo:
-        """The model asked for, or with none named, the set-up one with most to spend."""
+        "The model asked for, or with none named, the set-up one with most to spend."
         if not ref:
             models = self.registry.all()
             if not models:
@@ -207,6 +208,7 @@ class LLMService:
         temperature: float,
         thinking: str | None = None,
         max_provider_attempts: int | None = None,
+        max_output_tokens: int | None = None,
     ) -> Answer:
         """Send one prompt, rotating keys by remaining budget. ``model_ref`` names the model
         as :func:`.registry.model_ref` spells it.
@@ -258,6 +260,11 @@ class LLMService:
                         schema=schema,
                         reasoning_effort=effort,
                         single_attempt=True,
+                        **(
+                            {"max_output_tokens": max_output_tokens}
+                            if max_output_tokens is not None
+                            else {}
+                        ),
                     ),
                     timeout=TIMEOUT_SECONDS,
                 )
@@ -268,7 +275,8 @@ class LLMService:
                     f"{model.id} did not answer within {TIMEOUT_SECONDS:.0f} seconds. "
                     "Try a smaller question or a lighter model."
                 ) from exc
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — fail closed without logging secrets
+                reason = str(exc).replace(secret, "[redacted]")
                 if sampling is not None and _rejects_temperature(exc):
                     # The key is fine; the model only wants its own default. Same key again.
                     log.info("llm.temperature_refused", model=model.id)
@@ -287,7 +295,7 @@ class LLMService:
                     await asyncio.sleep(wait)
                     continue
                 limited, daily = _is_rate_limit(exc)
-                await self.keys.mark(key_id, error=str(exc)[:300])
+                await self.keys.mark(key_id, error=reason[:300])
                 if limited:
                     # Google is the authority: mark this pair spent and rotate rather than
                     # retrying into a limit we evidently mis-tracked.
@@ -296,12 +304,16 @@ class LLMService:
                     continue
                 # 5xx is the provider's own trouble ("overloaded"): another model may answer.
                 kind = LLMUnavailable if (_status(exc) or 0) >= 500 else LLMError
-                error = kind(_plain_reason(exc) or f"{model.id} could not be reached: {exc}")
+                error = kind(
+                    (_plain_reason(exc) or f"{model.id} could not be reached: {reason}").replace(
+                        secret, "[redacted]"
+                    )
+                )
                 if _refused(exc):
                     log.warning("llm.key_refused", key_id=key_id, model=model.id)
                     refusal = error
                     continue
-                raise error from exc
+                raise error from None
 
             prompt = int(usage.get("prompt_tokens") or 0)
             output = int(usage.get("completion_tokens") or 0)
@@ -323,6 +335,7 @@ class LLMService:
                 output_tokens=output,
                 thinking_tokens=thought,
                 total_tokens=total,
+                usage_reported=bool(usage) and reported > 0,
             )
 
     # -- health ----------------------------------------------------------
@@ -344,7 +357,7 @@ class LLMService:
         try:
             names = await self._listed(provider, key_id)
         # Any provider failure is the key test's answer, stored and shown to the user.
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — fail closed without logging secrets  # noqa: BLE001
             await self.keys.mark(key_id, error=str(exc)[:300])
             return {"keyId": key_id, "ok": False, "error": str(exc)[:300]}
 
@@ -363,5 +376,5 @@ class LLMService:
         try:
             return {"models": await self._listed(provider, rows[0].id), "error": None}
         # The reason is shown beside the field where the id can still be typed.
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — fail closed without logging secrets  # noqa: BLE001
             return {"models": [], "error": str(exc)[:300]}

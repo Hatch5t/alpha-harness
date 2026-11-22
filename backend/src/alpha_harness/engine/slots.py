@@ -32,7 +32,16 @@ from ..brain.errors import (
 from ..brain.filters import platform_midnight
 from ..brain.platform import MULTI_SIMULATION_SIZE, SIMULATION_SLOTS
 from ..brain.schemas import QUICK_MODE, SimulationRequest
-from ..db.models import ACTIVE, DedupEntry, SimStatus, SimulationRecord, Study, TaskQuota, utcnow
+from ..db.models import (
+    ACTIVE,
+    DedupEntry,
+    DispatchIntent,
+    SimStatus,
+    SimulationRecord,
+    Study,
+    TaskQuota,
+    utcnow,
+)
 from ..tasks import spawn
 from .awake import StayAwake
 from .lifecycle import (
@@ -199,6 +208,7 @@ class BatchEngine:
         *,
         task: str,
         allow_uncertain_retry: bool = True,
+        intent_keys: list[str] | None = None,
     ) -> dict[str, Any]:
         """Accept work. Returns what was queued and what was skipped as a duplicate.
 
@@ -211,10 +221,20 @@ class BatchEngine:
         skipped: list[dict[str, Any]] = []
         outcomes: list[dict[str, Any]] = []
         moded = [self._moded(request) for request in requests]
+        if intent_keys is not None and (
+            len(intent_keys) != len(requests) or len(set(intent_keys)) != len(intent_keys)
+        ):
+            raise ValueError("Dispatch keys must uniquely identify every request.")
 
         # The duplicate lookup and the insert must not interleave with another enqueue:
         # two callers would each find no active row and both queue, spending quota twice.
         async with self._enqueue_lock, self.db.session() as session:
+            intents = {
+                intent.key: intent
+                for intent in await session.scalars(
+                    select(DispatchIntent).where(DispatchIntent.key.in_(intent_keys or []))
+                )
+            }
             hashes = [request_hash(request) for request in moded]
             # A request made Quick is answered as well by a Full Alpha of the same point, which
             # is worth more: it can be submitted. Never the other way round.
@@ -247,6 +267,29 @@ class BatchEngine:
             # (index, hash, status, alpha id, the row: new, or an existing row's id)
             plan: list[tuple[int, str, SimStatus, str | None, int | SimulationRecord]] = []
             for index, (request, digest, full) in enumerate(zip(moded, hashes, fulls, strict=True)):
+                key = intent_keys[index] if intent_keys else None
+                if key is not None and key in intents:
+                    intent = intents[key]
+                    if intent.request_hash != digest:
+                        raise ValueError(
+                            "An immutable dispatch key was reused with a different payload."
+                        )
+                    record = (
+                        await session.get(SimulationRecord, intent.record_id)
+                        if intent.record_id
+                        else None
+                    )
+                    if record is None:
+                        raise ValueError(
+                            "The original dispatch record is missing; refusing a second send."
+                        )
+                    if record.status == SimStatus.CANCELLED and record.sent_at is None:
+                        record.status = SimStatus.QUEUED
+                        record.task = task
+                        record.finished_at = None
+                        record.message = None
+                    plan.append((index, digest, SimStatus.SKIPPED, record.alpha_id, record.id))
+                    continue
                 if full in known or digest in known:
                     alpha_id = known[full] if full in known else known[digest]
                     record = new_record(
@@ -287,6 +330,9 @@ class BatchEngine:
 
             for index, digest, status, alpha_id, row in plan:
                 record_id = row if isinstance(row, int) else row.id
+                key = intent_keys[index] if intent_keys else None
+                if key is not None and key not in intents:
+                    session.add(DispatchIntent(key=key, request_hash=digest, record_id=record_id))
                 if status == SimStatus.QUEUED:
                     queued.append(record_id)
                 else:

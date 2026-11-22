@@ -3,7 +3,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { Outlet } from '@tanstack/react-router'
+import { Outlet, useRouterState } from '@tanstack/react-router'
 import { RefreshCwIcon, ServerCrashIcon, XIcon } from 'lucide-react'
 import { Suspense, useEffect, useState } from 'react'
 import { Group, Panel, useDefaultLayout } from 'react-resizable-panels'
@@ -23,6 +23,7 @@ import { SignIn } from './sign-in'
 import { InstallingOverlay } from './update'
 
 export function Shell() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
   const query = useQuery({
     queryKey: ['today'],
     queryFn: () => today.get(),
@@ -77,6 +78,21 @@ export function Shell() {
     )
   }
 
+  if (query.data.step === 'sign-in' && pathname === '/research') {
+    return (
+      <div className="h-svh overflow-auto">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline px-5 py-3 text-body">
+          <span>Alpha Harness · Offline research workspace</span>
+          <a className={LINK} href="/dashboard">
+            Sign in to BRAIN for live research
+          </a>
+        </div>
+        <Suspense fallback={<ScreenSkeleton />}>
+          <Outlet />
+        </Suspense>
+      </div>
+    )
+  }
   if (query.data.step === 'sign-in') return <SignIn storedEmail={query.data.you.email} />
   return <Workspace you={query.data.you} />
 }

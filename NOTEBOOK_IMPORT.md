@@ -50,8 +50,10 @@ and warnings only. Do not commit research exports or private notebooks to a publ
 
 Each item in the output's `templates` array is compatible with the existing Template Lab
 document API, `POST /api/template-lab/templates`; saving a template is not running a task.
-GUI batch import is not implemented in this milestone. Any later campaign/UI importer must
-retain the source hash and use the normal market preview before allowing a task to run.
+Research Campaigns now includes notebook preview, optional saving in Template Lab and use in
+a campaign. The source hash is retained, and the normal campaign market/type validation
+runs before dispatch. One campaign accepts at most 20 declared templates and expands a
+bounded parameter grid. Reading or saving a document never starts simulations.
 
 Syntax acceptance is not market acceptance: actual account operators, field existence,
 MATRIX/VECTOR types, universe coverage, competition constraints and the expanded candidate

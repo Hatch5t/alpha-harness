@@ -40,6 +40,7 @@ from .realtime import (
     TOPIC_TASKS,
     Hub,
 )
+from .research.service import ResearchService
 from .sealing import Sealer
 from .tasks import TaskRegistry, cancel_background, spawn
 from .vault.backfill import Backfill
@@ -116,6 +117,7 @@ class AppState:
             backfill=self.backfill,
         )
         self.optimizer.llm = self.llm
+        self.research = ResearchService(self)
 
         self._renew_lock = asyncio.Lock()
         self._last_session_check = float("-inf")
@@ -173,6 +175,7 @@ class AppState:
         await self.tracker.start()
         await self.engine.start()
         await self.optimizer.start()
+        await self.research.start_worker()
         self._session_watch = asyncio.create_task(self._watch_session(), name="session-watch")
         log.info("startup.complete", data_dir=str(self.settings.data_dir))
 
@@ -199,6 +202,7 @@ class AppState:
                         SimulationRecord.status.in_([SimStatus.COMPLETE, SimStatus.WARNING]),
                         SimulationRecord.alpha_id.is_not(None),
                         SimulationRecord.finished_at >= since,
+                        ~SimulationRecord.task.like("research-offline-%"),
                     )
                 )
             ).all()
@@ -285,6 +289,7 @@ class AppState:
                 return False
 
     async def shutdown(self) -> None:
+        await self.research.stop_worker()
         watch = getattr(self, "_session_watch", None)
         if watch is not None:
             watch.cancel()

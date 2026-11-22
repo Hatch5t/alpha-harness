@@ -1542,6 +1542,228 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/research": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listing */
+        get: operations["listing_api_research_get"];
+        put?: never;
+        /** Create */
+        post: operations["create_api_research_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/research/global-budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Global Budget */
+        put: operations["global_budget_api_research_global_budget_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/research/notebook-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Notebook */
+        post: operations["notebook_api_research_notebook_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/research/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Options */
+        get: operations["options_api_research_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/research/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview */
+        post: operations["preview_api_research_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/research/profiles/{profile_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Profile */
+        put: operations["profile_api_research_profiles__profile_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/research/{campaign_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Report */
+        get: operations["report_api_research__campaign_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/research/{campaign_id}/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Authorize */
+        post: operations["authorize_api_research__campaign_id__authorize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/research/{campaign_id}/candidates/{candidate_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decision */
+        post: operations["decision_api_research__campaign_id__candidates__candidate_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/research/{campaign_id}/control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Control */
+        post: operations["control_api_research__campaign_id__control_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/research/{campaign_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download */
+        get: operations["download_api_research__campaign_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/research/{campaign_id}/refresh-evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh */
+        post: operations["refresh_api_research__campaign_id__refresh_evidence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/research/{campaign_id}/settle-uncertain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Settle */
+        post: operations["settle_api_research__campaign_id__settle_uncertain_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/search-lab/options": {
         parameters: {
             query?: never;
@@ -2571,6 +2793,16 @@ export interface components {
             /** Resetsinseconds */
             resetsInSeconds: number | null;
         };
+        /** Authorization */
+        Authorization: {
+            /**
+             * Acknowledgement
+             * @constant
+             */
+            acknowledgement: "AUTHORIZE LIVE RESEARCH WITH THESE EXACT CAPS";
+            /** Confighash */
+            configHash: string;
+        };
         /** AutoSeeds */
         AutoSeeds: {
             /** Examined */
@@ -2748,6 +2980,130 @@ export interface components {
             /** Recipes */
             recipes?: string[];
         };
+        /** CampaignSpec */
+        CampaignSpec: {
+            /**
+             * Acceptstructuralrepairs
+             * @default false
+             */
+            acceptStructuralRepairs: boolean;
+            /** Baselineids */
+            baselineIds?: string[];
+            /** Componentgroup */
+            componentGroup?: string | null;
+            /**
+             * Costbps
+             * @default 5
+             */
+            costBps: number;
+            /**
+             * Cycles
+             * @default 1
+             */
+            cycles: number;
+            /** Datasetids */
+            datasetIds?: string[];
+            /**
+             * Delay
+             * @default 1
+             */
+            delay: number;
+            /**
+             * Embargodays
+             * @default 5
+             */
+            embargoDays: number;
+            /** Expectedtheme */
+            expectedTheme?: string | null;
+            /**
+             * Explorationfraction
+             * @default 0.7
+             */
+            explorationFraction: number;
+            /**
+             * Holdoutdeclareduntouched
+             * @default false
+             */
+            holdoutDeclaredUntouched: boolean;
+            /** Hypothesis */
+            hypothesis: string;
+            limits?: components["schemas"]["Limits"];
+            /**
+             * Maxdiscoverycorrelation
+             * @default 0.5
+             */
+            maxDiscoveryCorrelation: number;
+            /**
+             * Maxoutputtokens
+             * @default 4096
+             */
+            maxOutputTokens: number;
+            /**
+             * Minobservations
+             * @default 60
+             */
+            minObservations: number;
+            /** @default offline */
+            mode: components["schemas"]["Mode"];
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Name
+             * @default Grandmaster Research Campaign #1
+             */
+            name: string;
+            /**
+             * Neutralization
+             * @default INDUSTRY
+             */
+            neutralization: string;
+            pricing?: components["schemas"]["Pricing"] | null;
+            profileEvidence?: components["schemas"]["Profile"] | null;
+            /**
+             * Profileid
+             * @default general
+             */
+            profileId: string;
+            promotionWeights?: components["schemas"]["PromotionWeights"];
+            /**
+             * Purpose
+             * @default regular
+             * @enum {string}
+             */
+            purpose: "regular" | "power_pool";
+            /**
+             * Region
+             * @default GLB
+             */
+            region: string;
+            /**
+             * Revisionreason
+             * @default
+             */
+            revisionReason: string;
+            /** Templatesourcehash */
+            templateSourceHash?: string | null;
+            /** Templates */
+            templates?: components["schemas"]["TemplateBody"][];
+            /**
+             * Universe
+             * @default TOP3000
+             */
+            universe: string;
+            /**
+             * Validationend
+             * Format: date
+             */
+            validationEnd: string;
+            /**
+             * Validationstart
+             * Format: date
+             */
+            validationStart: string;
+        };
         /** CancelResult */
         CancelResult: {
             /** Acknowledged */
@@ -2758,6 +3114,16 @@ export interface components {
         Cancelled: {
             /** Cancelled */
             cancelled: boolean;
+        };
+        /** CandidateDecision */
+        CandidateDecision: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve_for_manual_review" | "reject";
+            /** Note */
+            note: string;
         };
         /** CatalogCounts */
         CatalogCounts: {
@@ -2966,6 +3332,14 @@ export interface components {
         Competitions: {
             /** Competitions */
             competitions: components["schemas"]["Competition"][];
+        };
+        /** Control */
+        Control: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "start" | "pause" | "resume" | "cancel";
         };
         /** CopiedAlphas */
         CopiedAlphas: {
@@ -3428,6 +3802,15 @@ export interface components {
             /** Vector Operators */
             vector_operators?: string[];
         };
+        /** GlobalApproval */
+        GlobalApproval: {
+            /**
+             * Acknowledgement
+             * @constant
+             */
+            acknowledgement: "APPROVE GLOBAL RESEARCH BUDGET";
+            limits: components["schemas"]["Limits"];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -3736,6 +4119,44 @@ export interface components {
             /** Vector */
             vector: number;
         };
+        /** Limits */
+        Limits: {
+            /**
+             * Concurrentbatches
+             * @default 1
+             */
+            concurrentBatches: number;
+            /**
+             * Full
+             * @default 2
+             */
+            full: number;
+            /**
+             * Microusd
+             * @default 0
+             */
+            microusd: number;
+            /**
+             * Quick
+             * @default 10
+             */
+            quick: number;
+            /**
+             * Requests
+             * @default 2
+             */
+            requests: number;
+            /**
+             * Requestsperminute
+             * @default 10
+             */
+            requestsPerMinute: number;
+            /**
+             * Tokens
+             * @default 100000
+             */
+            tokens: number;
+        };
         /**
          * LoginRequest
          * @description Omit both fields to sign in with the stored credential.
@@ -3784,6 +4205,8 @@ export interface components {
             /** Universe */
             universe: string;
         };
+        /** @enum {string} */
+        Mode: "offline" | "live";
         /**
          * ModelInfo
          * @description One model and the limits its user gave it. Each key gets these limits in full.
@@ -3832,6 +4255,11 @@ export interface components {
             testSharpe: number | null;
             /** Trainsharpe */
             trainSharpe: number | null;
+        };
+        /** Notebook */
+        Notebook: {
+            /** Text */
+            text: string;
         };
         /** OfferedModels */
         OfferedModels: {
@@ -4317,6 +4745,94 @@ export interface components {
             testPeriod?: string | null;
             /** Truncation */
             truncation?: number | null;
+        };
+        /** Pricing */
+        Pricing: {
+            /** Inputmicrousdpermillion */
+            inputMicrousdPerMillion: number;
+            /** Outputmicrousdpermillion */
+            outputMicrousdPerMillion: number;
+            /** Source */
+            source: string;
+            /**
+             * Verifiedon
+             * Format: date
+             */
+            verifiedOn: string;
+        };
+        /** Profile */
+        Profile: {
+            /** Componentregions */
+            componentRegions?: string[];
+            /** Constraints */
+            constraints?: {
+                [key: string]: string;
+            };
+            /** Deadline */
+            deadline?: string | null;
+            fieldFilter?: components["schemas"]["FieldFilter"] | null;
+            /** Id */
+            id: string;
+            /**
+             * Maxfields
+             * @default 12
+             */
+            maxFields: number;
+            /**
+             * Maxoperators
+             * @default 32
+             */
+            maxOperators: number;
+            /** Name */
+            name: string;
+            /** Regions */
+            regions?: string[];
+            /** Requiredtheme */
+            requiredTheme?: string | null;
+            /** Rewards */
+            rewards?: string | null;
+            /** Source */
+            source?: string | null;
+            /**
+             * Supported
+             * @default true
+             */
+            supported: boolean;
+            /**
+             * Verified
+             * @default false
+             */
+            verified: boolean;
+            /** Verifiedon */
+            verifiedOn?: string | null;
+        };
+        /** PromotionWeights */
+        PromotionWeights: {
+            /**
+             * Complexity
+             * @default 0.01
+             */
+            complexity: number;
+            /**
+             * Fitness
+             * @default 1
+             */
+            fitness: number;
+            /**
+             * Novelty
+             * @default 0.1
+             */
+            novelty: number;
+            /**
+             * Sharpe
+             * @default 0.1
+             */
+            sharpe: number;
+            /**
+             * Turnover
+             * @default 0.1
+             */
+            turnover: number;
         };
         /** PromptInfo */
         PromptInfo: {
@@ -4804,6 +5320,14 @@ export interface components {
             totals: components["schemas"]["PlanTotals"];
             /** Warnings */
             warnings: string[];
+        };
+        /** Settlement */
+        Settlement: {
+            /**
+             * Acknowledgement
+             * @constant
+             */
+            acknowledgement: "I CHECKED BRAIN; SETTLE WITHOUT RESENDING";
         };
         /**
          * SimStatus
@@ -8079,6 +8603,471 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Quitting"];
+                };
+            };
+        };
+    };
+    listing_api_research_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+        };
+    };
+    create_api_research_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CampaignSpec"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    global_budget_api_research_global_budget_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GlobalApproval"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    notebook_api_research_notebook_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Notebook"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    options_api_research_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    preview_api_research_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CampaignSpec"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    profile_api_research_profiles__profile_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Profile"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_api_research__campaign_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    authorize_api_research__campaign_id__authorize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Authorization"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decision_api_research__campaign_id__candidates__candidate_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: number;
+                candidate_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidateDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    control_api_research__campaign_id__control_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Control"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_api_research__campaign_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_api_research__campaign_id__refresh_evidence_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    settle_api_research__campaign_id__settle_uncertain_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                campaign_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Settlement"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

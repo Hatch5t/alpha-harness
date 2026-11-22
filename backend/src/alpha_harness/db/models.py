@@ -632,3 +632,126 @@ class CampaignReview(Base):
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
     evidence: Mapped[dict[str, Any]] = mapped_column(JSON)
     decision: Mapped[dict[str, Any] | None] = mapped_column(JSON(none_as_null=True), nullable=True)
+
+
+class DispatchIntent(Base):
+    """Immutable enqueue identity, including failed/uncertain terminal outcomes."""
+
+    __tablename__ = "dispatch_intent"
+    key: Mapped[str] = mapped_column(String(160), primary_key=True)
+    request_hash: Mapped[str] = mapped_column(String(64))
+    record_id: Mapped[int | None] = mapped_column(
+        ForeignKey("simulation_record.id", ondelete="SET NULL")
+    )
+
+
+class ResearchCampaign(Base):
+    __tablename__ = "research_campaign"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128))
+    mode: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(32), default="DRAFT", index=True)
+    config: Mapped[dict[str, Any]] = mapped_column(JSON)
+    config_hash: Mapped[str] = mapped_column(String(64))
+    authorized_hash: Mapped[str | None] = mapped_column(String(64))
+    study_id: Mapped[int | None] = mapped_column(ForeignKey("study.id"), unique=True)
+    cursor: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    message: Mapped[str | None] = mapped_column(Text)
+    retry_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow, onupdate=utcnow)
+
+
+class ResearchHypothesis(Base):
+    __tablename__ = "research_hypothesis"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("research_campaign.id"), index=True)
+    identity: Mapped[str] = mapped_column(String(64), index=True)
+    dataset_id: Mapped[str] = mapped_column(String(128))
+    family: Mapped[str] = mapped_column(String(128))
+    document: Mapped[dict[str, Any]] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(32), default="PROPOSED")
+    __table_args__ = (UniqueConstraint("campaign_id", "identity"),)
+
+
+class ResearchCandidate(Base):
+    __tablename__ = "research_candidate"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("research_campaign.id"), index=True)
+    hypothesis_id: Mapped[int] = mapped_column(ForeignKey("research_hypothesis.id"))
+    original: Mapped[str] = mapped_column(Text)
+    expression: Mapped[str] = mapped_column(Text)
+    identity: Mapped[str] = mapped_column(String(64), index=True)
+    structure: Mapped[str] = mapped_column(String(64), index=True)
+    settings: Mapped[dict[str, Any]] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(32), default="VALIDATED", index=True)
+    reason: Mapped[str | None] = mapped_column(Text)
+    provenance: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    quick_trial_id: Mapped[int | None] = mapped_column(ForeignKey("trial.id"), unique=True)
+    full_trial_id: Mapped[int | None] = mapped_column(ForeignKey("trial.id"), unique=True)
+    evidence: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    decision: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+
+class ResearchEvent(Base):
+    __tablename__ = "research_event"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("research_campaign.id"), index=True)
+    key: Mapped[str] = mapped_column(String(160))
+    kind: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    __table_args__ = (UniqueConstraint("campaign_id", "key"),)
+
+
+class ResearchReservation(Base):
+    __tablename__ = "research_reservation"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("research_campaign.id"), index=True)
+    mode: Mapped[str] = mapped_column(String(16))
+    day: Mapped[str] = mapped_column(String(10), index=True)
+    key: Mapped[str] = mapped_column(String(160))
+    meter: Mapped[str] = mapped_column(String(24))
+    amount: Mapped[int] = mapped_column(Integer)
+    actual: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    settled: Mapped[bool] = mapped_column(default=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+    __table_args__ = (UniqueConstraint("campaign_id", "key", "meter"),)
+
+
+class ResearchBudget(Base):
+    __tablename__ = "research_budget"
+    mode: Mapped[str] = mapped_column(String(16), primary_key=True)
+    limits: Mapped[dict[str, Any]] = mapped_column(JSON)
+    approved_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class ResearchDailyCharge(Base):
+    """Conservative daily debit, including a reserved batch resumed on a later day."""
+
+    __tablename__ = "research_daily_charge"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    reservation_id: Mapped[int] = mapped_column(ForeignKey("research_reservation.id"))
+    mode: Mapped[str] = mapped_column(String(16))
+    day: Mapped[str] = mapped_column(String(10), index=True)
+    meter: Mapped[str] = mapped_column(String(24))
+    amount: Mapped[int] = mapped_column(Integer)
+    __table_args__ = (UniqueConstraint("reservation_id", "day"),)
+
+
+class ResearchProfile(Base):
+    __tablename__ = "research_profile"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    document: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+class ResearchExposure(Base):
+    __tablename__ = "research_exposure"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("research_campaign.id"), index=True)
+    region: Mapped[str] = mapped_column(String(16))
+    dataset_id: Mapped[str] = mapped_column(String(128))
+    start: Mapped[str] = mapped_column(String(10))
+    end: Mapped[str] = mapped_column(String(10))
+    purpose: Mapped[str] = mapped_column(String(24))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)

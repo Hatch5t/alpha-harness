@@ -1,5 +1,6 @@
 """Boot the release launcher twice against disposable, credential-free local state."""
 
+import hashlib
 import json
 import os
 import re
@@ -36,9 +37,14 @@ def main() -> None:
         home.mkdir()
         subprocess.run(["uv", "venv", "--python", "3.14", str(home / "venv-a")], check=True)
         python = home / "venv-a/bin/python"
+        wheel = next(wheel_dir.glob("*.whl"))
+        digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+        assert digest == os.environ["ALPHA_HARNESS_WHEEL_SHA256"]
+        requirements = root / "smoke-requirements.txt"
+        requirements.write_text(wheel.as_uri() + " --hash=sha256:" + digest + "\n")
         subprocess.run(
-            ["uv", "pip", "install", "--python", str(python), "-c",
-             str(wheel_dir / "constraints.txt"), str(next(wheel_dir.glob("*.whl")))],
+            ["uv", "pip", "install", "--require-hashes", "--python", str(python), "-c",
+             str(wheel_dir / "constraints.txt"), "-r", str(requirements)],
             check=True,
         )
         (home / "slot-a.json").write_text(json.dumps({"version": version, "served": True}))
@@ -48,6 +54,7 @@ def main() -> None:
             "ALPHA_HARNESS_DATA_DIR": str(root / "data"),
         }
         expected = None
+        research_id = None
         for attempt in range(2):
             with (root / f"launcher-{attempt}.log").open("w+") as log:
                 process = subprocess.Popen([str(binary)], env=environment, stdout=log, stderr=log)
@@ -74,6 +81,17 @@ def main() -> None:
                     preferences = json.loads(request("/api/preferences"))
                     if attempt == 0:
                         assert history == []
+                        policy = json.loads(request("/api/research/options"))
+                        assert policy["globalBudgets"]["live"]["quick"] == 0
+                        created = json.loads(request("/api/research", {
+                            "name": "Synthetic campaign restart smoke",
+                            "mode": "offline", "hypothesis": "Synthetic engineering smoke only.",
+                            "validationStart": "2025-01-01", "validationEnd": "2025-12-31",
+                            "baselineIds": ["synthetic-baseline"],
+                        }))
+                        research_id = created["id"]
+                        request(f"/api/research/{research_id}/control", {"action": "start"})
+                        request(f"/api/research/{research_id}/control", {"action": "pause"})
                         preferences.update(defaultCores=2, updateCheckHours=0, autoUpdate=False)
                         request("/api/preferences", preferences, "PUT")
                         plan = {
@@ -94,6 +112,23 @@ def main() -> None:
                         assert preferences["updateCheckHours"] == 0
                         assert preferences["autoUpdate"] is False
                         assert len(history) == 1 and history[0]["id"] == expected
+                        campaign = json.loads(request(f"/api/research/{research_id}"))
+                        assert campaign["status"] == "PAUSED" and campaign["mode"] == "offline"
+                        request(f"/api/research/{research_id}/control", {"action": "resume"})
+                        deadline = time.monotonic() + 80
+                        while True:
+                            campaign = json.loads(request(f"/api/research/{research_id}"))
+                            if campaign["status"] == "COMPLETE":
+                                break
+                            assert campaign["status"] == "RUNNING", campaign.get("message")
+                            assert time.monotonic() < deadline, "Offline native campaign timed out"
+                            time.sleep(0.25)
+                        assert campaign["budgets"]["quick"]["reserved"] == 10
+                        assert campaign["budgets"]["full"]["reserved"] == 2
+                        assert campaign["budgets"]["requests"]["reserved"] == 2
+                        assert json.loads(request(f"/api/research/{research_id}/download"))["id"] == research_id
+                        assert json.loads(request("/api/health"))["activeSimulations"] == 0
+                        print("Native offline campaign: 10 Quick, 2 Full, 2 synthetic requests; pause/restart/resume and export passed.")
                     request("/api/quit", {}, "POST")
                     assert process.wait(timeout=25) == 0
                 except BaseException:

@@ -132,11 +132,16 @@ async def send_parked(optimizer: Optimizer, row: Study, batch: Sequence[Trial]) 
                     "visualization": False,
                 }
     requests = [request_of(t) for t in batch]
-    outcomes = (
-        await optimizer.engine.enqueue(
-            requests, task=row.task, **({"allow_uncertain_retry": False} if pilot else {})
+    if pilot:
+        result = await optimizer.engine.enqueue(
+            requests,
+            task=row.task,
+            allow_uncertain_retry=False,
+            intent_keys=[f"pilot:{row.id}:{row.created_at.isoformat()}:{t.number}" for t in batch],
         )
-    ).get("outcomes", [])
+    else:
+        result = await optimizer.engine.enqueue(requests, task=row.task)
+    outcomes = result.get("outcomes", [])
     if len(outcomes) != len(batch):
         raise ValueError("Engine outcomes do not match the requested trial count.")
     for trial, outcome in zip(batch, outcomes, strict=True):
