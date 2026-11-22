@@ -306,6 +306,8 @@ class LLMService:
                 reported = _token_count(usage.get("total_tokens"))
                 details = usage.get("completion_tokens_details") or {}
                 reasoning = _token_count(details.get("reasoning_tokens"))
+                if reported and reported < prompt + output:
+                    raise ValueError("Inconsistent provider token totals")
             except ValueError, AttributeError, TypeError:
                 diagnostic = failure("malformed_response")
                 await self.keys.mark(key_id, error=diagnostic.message)
