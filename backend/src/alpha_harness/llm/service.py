@@ -330,7 +330,9 @@ class LLMService:
                 error = kind(
                     (_plain_reason(exc) or f"{model.id} could not be reached: {reason}").replace(
                         secret, "[redacted]"
-                    )
+                    ),
+                    provider_status=_status(exc),
+                    provider_category=_provider_category(exc),
                 )
                 if _refused(exc):
                     log.warning("llm.key_refused", key_id=key_id, model=model.id)
