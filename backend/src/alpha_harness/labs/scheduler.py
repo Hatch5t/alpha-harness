@@ -690,6 +690,13 @@ async def resize_task(
     Returns the free cores instead, changing nothing, when a running task cannot grow that far.
     """
     before = cores_of(row)
+    if row.sampler == POWER_POOL_SAMPLER:
+        from .params import PowerPoolParams, params_of
+        from .pilot import MAX_QUICK
+
+        run = params_of(row, PowerPoolParams)
+        if run.pilot and (cores != 1 or (simulations is not None and simulations > MAX_QUICK)):
+            raise ValueError("Controlled pilot is capped at one core and 10 Quick simulations.")
     async with optimizer.lock(row.id), scheduling:
         if row.status == StudyStatus.RUNNING and cores > before:
             async with optimizer.db.session() as session:
