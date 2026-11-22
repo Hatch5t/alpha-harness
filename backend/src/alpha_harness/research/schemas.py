@@ -3,7 +3,7 @@
 import hashlib
 import json
 from datetime import date  # noqa: TC003 — Pydantic resolves this type at runtime
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 from pydantic import Field, model_validator
 
@@ -135,6 +135,44 @@ class GeneratedAlpha(Out):
 class Generated(Out):
     hypotheses: list[Hypothesis] = Field(min_length=1, max_length=6)
     alphas: list[GeneratedAlpha] = Field(min_length=1, max_length=40)
+
+    @classmethod
+    def provider_schema(cls) -> dict[str, Any]:
+        """Shape constraints for decoding; all value bounds remain enforced locally.
+
+        Gemini rejects the nested bounded-array grammar in the full Pydantic schema
+        before generating anything (HTTP 400, too many states). Removing decoder value
+        matchers avoids that combinatorial expansion. This never changes model_validate.
+        """
+        omitted = {
+            "title",
+            "default",
+            "minItems",
+            "maxItems",
+            "minLength",
+            "maxLength",
+            "minimum",
+            "maximum",
+            "exclusiveMinimum",
+            "exclusiveMaximum",
+            "pattern",
+        }
+
+        def compact(node: dict[str, Any]) -> dict[str, Any]:
+            result = {}
+            for key, value in node.items():
+                if key in omitted:
+                    continue
+                if key in {"properties", "$defs"}:
+                    value = {name: compact(child) for name, child in value.items()}
+                elif isinstance(value, dict):
+                    value = compact(value)
+                elif key in {"anyOf", "oneOf", "allOf"}:
+                    value = [compact(child) for child in value]
+                result[key] = value
+            return result
+
+        return compact(cls.model_json_schema())
 
     @model_validator(mode="after")
     def references(self) -> Self:

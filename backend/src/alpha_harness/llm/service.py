@@ -19,6 +19,7 @@ from openai import DefaultAsyncHttpxClient
 
 from ..schemas import camel_dict
 from .budget import Ledger
+from .failures import classify, failure
 from .keys import BudgetExhaustedError, KeyStore, LLMError, LLMUnavailable
 from .openai_compat import OVERLOADED_WAITS, OpenAICompatible, ProviderError
 from .providers import PROVIDERS
@@ -68,33 +69,6 @@ def _is_rate_limit(exc: Exception) -> tuple[bool, bool]:
     return limited, daily
 
 
-def _plain_reason(exc: Exception) -> str | None:
-    """The common failures, said in words the person reading them can act on.
-
-    Google's errors arrive as a wall of JSON; the raw text is still kept against the key as
-    ``lastError`` for anyone who wants it.
-    """
-    text, status = str(exc).lower(), _status(exc)
-    if "api_key_invalid" in text or "api key not valid" in text or "unauthenticated" in text:
-        return (
-            "That Google AI Studio key was not accepted. Check it was copied whole, and "
-            "that it has not been deleted at aistudio.google.com."
-        )
-    if status == 403 or "permission_denied" in text:
-        return (
-            "The provider refused that key. It may not have access to this model, or the "
-            "account or project it belongs to may have been closed."
-        )
-    if status == 404 or ("not found" in text and "model" in text):
-        return "That model is not available to this key. Pick a different one."
-    if status == 503:
-        return (
-            "That model is overloaded right now, which usually passes within a minute. "
-            "Try again, or pick another model."
-        )
-    return None
-
-
 def _rejects_temperature(exc: Exception) -> bool:
     """A 400 about the temperature: the model takes none but its own default."""
     return _status(exc) == 400 and "temperature" in str(exc).lower()
@@ -109,6 +83,15 @@ def _refused(exc: Exception) -> bool:
 def _out_of_credit(text: str) -> bool:
     "An account with no credit left: a ``429`` naming a quota, but no wait ends it."
     return "insufficient_quota" in text
+
+
+def _token_count(value: Any) -> int:
+    """Untrusted usage must never turn a request into a token credit."""
+    if value is None:
+        return 0
+    if type(value) is not int or value < 0:
+        raise ValueError("Invalid provider token count")
+    return value
 
 
 #: How long a connection to a provider stays open between calls: a fresh one costs about
@@ -227,11 +210,14 @@ class LLMService:
         sampling = None if model.ref in self._default_sampling else temperature
         provider_attempts = 0
         overloaded = 0
+        last_failure: LLMError | None = None
 
         while True:
             # The controlled pilot forbids retrying a physical request through a
             # second key, a rejected temperature, or a 503. The SDK uses zero retries.
             if max_provider_attempts is not None and provider_attempts >= max_provider_attempts:
+                if last_failure is not None:
+                    raise last_failure from None
                 raise LLMUnavailable("Controlled pilot provider request limit reached.")
             try:
                 slot = await self.keys.choose(model, skip=tried)
@@ -273,10 +259,17 @@ class LLMService:
                 # The provider had the request and may well bill it, so it counts.
                 raise LLMUnavailable(
                     f"{model.id} did not answer within {TIMEOUT_SECONDS:.0f} seconds. "
-                    "Try a smaller question or a lighter model."
+                    "Try a smaller question or a lighter model.",
+                    diagnostic=failure("timeout"),
                 ) from exc
             except Exception as exc:  # noqa: BLE001 — fail closed without logging secrets
-                reason = str(exc).replace(secret, "[redacted]")
+                diagnostic = classify(exc)
+                kind = LLMUnavailable if diagnostic.retryable else LLMError
+                error = kind(diagnostic.message, diagnostic=diagnostic)
+                last_failure = error
+                # Persist only allowlisted diagnostics, not provider bodies which can echo
+                # prompts or credentials. Campaign events retain the same classification.
+                await self.keys.mark(key_id, error=diagnostic.message)
                 if sampling is not None and _rejects_temperature(exc):
                     # The key is fine; the model only wants its own default. Same key again.
                     log.info("llm.temperature_refused", model=model.id)
@@ -295,40 +288,41 @@ class LLMService:
                     await asyncio.sleep(wait)
                     continue
                 limited, daily = _is_rate_limit(exc)
-                await self.keys.mark(key_id, error=reason[:300])
                 if limited:
                     # Google is the authority: mark this pair spent and rotate rather than
                     # retrying into a limit we evidently mis-tracked.
                     await self.ledger.penalise(key_id, model, daily=daily)
                     log.warning("llm.rate_limited", key_id=key_id, model=model.id, daily=daily)
                     continue
-                # 5xx is the provider's own trouble ("overloaded"): another model may answer.
-                kind = LLMUnavailable if (_status(exc) or 0) >= 500 else LLMError
-                error = kind(
-                    (_plain_reason(exc) or f"{model.id} could not be reached: {reason}").replace(
-                        secret, "[redacted]"
-                    )
-                )
                 if _refused(exc):
                     log.warning("llm.key_refused", key_id=key_id, model=model.id)
                     refusal = error
                     continue
                 raise error from None
 
-            prompt = int(usage.get("prompt_tokens") or 0)
-            output = int(usage.get("completion_tokens") or 0)
-            reported = int(usage.get("total_tokens") or 0)
+            try:
+                prompt = _token_count(usage.get("prompt_tokens"))
+                output = _token_count(usage.get("completion_tokens"))
+                reported = _token_count(usage.get("total_tokens"))
+                details = usage.get("completion_tokens_details") or {}
+                reasoning = _token_count(details.get("reasoning_tokens"))
+                if reported and reported < prompt + output:
+                    raise ValueError("Inconsistent provider token totals")
+            except ValueError, AttributeError, TypeError:
+                diagnostic = failure("malformed_response")
+                await self.keys.mark(key_id, error=diagnostic.message)
+                raise LLMError(
+                    diagnostic.message, diagnostic=diagnostic, observed={"requests": 1}
+                ) from None
             # Google reports no breakdown: its thinking is only what the total holds beyond
             # the prompt and the answer.
-            thought = int(
-                (usage.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0
-            ) or max(0, reported - prompt - output)
+            thought = reasoning or max(0, reported - prompt - output)
             total = reported or estimate
-            if usage:
+            if reported or prompt or output or thought:
                 await self.ledger.record_tokens(slot, model, reported or prompt + output + thought)
             await self.keys.mark(key_id)
 
-            return Answer(
+            answer = Answer(
                 text=text.strip(),
                 model=model.id,
                 prompt_tokens=prompt,
@@ -337,6 +331,14 @@ class LLMService:
                 total_tokens=total,
                 usage_reported=bool(usage) and reported > 0,
             )
+            category = usage.get("_response_failure")
+            if isinstance(category, str):
+                diagnostic = failure(category)
+                observed = {"requests": 1}
+                if answer.usage_reported:
+                    observed.update(tokens=total, input=prompt, output=max(output, total - prompt))
+                raise LLMError(diagnostic.message, diagnostic=diagnostic, observed=observed)
+            return answer
 
     # -- health ----------------------------------------------------------
 

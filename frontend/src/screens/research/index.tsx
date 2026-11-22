@@ -55,6 +55,20 @@ interface Candidate {
   decision: Json | null
 }
 interface Report extends Summary {
+  storedStatus: string
+  generation: {
+    allFailed: boolean
+    failures: {
+      dataset: string | null
+      diagnostic: {
+        category: string
+        message: string
+        recovery: string
+        httpStatus: number | null
+        retryable: boolean
+      }
+    }[]
+  }
   config: Spec
   configHash: string
   dataQuality: { nonfiniteValuesMadeMissing: string[] }
@@ -533,7 +547,7 @@ export function ResearchScreen() {
                   Resume within frozen caps
                 </Button>
               ) : null}
-              {!['COMPLETE', 'CANCELLED'].includes(data.status) ? (
+              {!['COMPLETE', 'CANCELLED', 'FAILED'].includes(data.status) ? (
                 <Button disabled={busy} onClick={() => void act(() => control('cancel'))}>
                   Cancel remaining work
                 </Button>
@@ -549,6 +563,53 @@ export function ResearchScreen() {
                 </Button>
               ) : null}
             </div>
+            {data.generation.failures.length ? (
+              <div role="alert" className="my-4 space-y-3 text-body">
+                <p>
+                  {data.generation.allFailed
+                    ? 'Generation failed before simulation.'
+                    : 'Some generation attempts failed; successful candidates are retained.'}
+                </p>
+                {data.storedStatus !== data.status ? (
+                  <p>
+                    Historical stored status: {data.storedStatus}. Display corrected from recorded
+                    failures; research records are preserved.
+                  </p>
+                ) : null}
+                {data.generation.failures.map((item, index) => (
+                  <div key={`${item.dataset}-${index}`}>
+                    <strong>
+                      {item.dataset ?? 'Interrupted generation'} · {item.diagnostic.category}
+                      {item.diagnostic.httpStatus ? ` · HTTP ${item.diagnostic.httpStatus}` : ''}
+                    </strong>
+                    <p>
+                      {item.diagnostic.message} {item.diagnostic.recovery}
+                    </p>
+                  </div>
+                ))}
+                <p>
+                  Reserved attempts remain charged. Unknown usage does not mean free. Creating a
+                  recovery draft makes no provider calls and requires a new live approval.
+                </p>
+                <a className="text-accent" href="/ai">
+                  Open LLM Integration
+                </a>
+                <Button
+                  disabled={busy}
+                  onClick={() => {
+                    setDraft({ ...data.config, name: `${data.name} recovery` })
+                    setAdvanced('{}')
+                    setImported(null)
+                    setPlan(null)
+                    setAck('')
+                    setError(null)
+                    setSelected(null)
+                  }}
+                >
+                  Prepare recovery draft
+                </Button>
+              </div>
+            ) : null}
             <table className="my-4 w-full text-left text-body">
               <thead>
                 <tr>
