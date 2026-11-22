@@ -41,8 +41,8 @@ from .fastexpr import (
 )
 from .objectives import FAILURE
 from .params import PowerPoolParams, params_of
-from .power_pool_preflight import prefill_calls, repair_temporal_vector, select_pending
 from .pilot import MAX_LLM, stage_promotions
+from .power_pool_preflight import prefill_calls, repair_temporal_vector, select_pending
 
 if TYPE_CHECKING:  # pragma: no cover
     import asyncio
