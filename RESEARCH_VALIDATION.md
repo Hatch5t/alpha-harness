@@ -6,7 +6,7 @@ and the native Apple Silicon smoke test passes.
 
 ## Local results before release
 
-- 108 backend tests passed, including the original completed Quick-only task review case,
+- 110 backend tests passed, including the original completed Quick-only task review case,
   historical tasks, missing/malformed turnover, request accounting, controlled pilot and the
   new controller fault matrix. Five additional inline mathematical/template self-checks run
   inside this suite.

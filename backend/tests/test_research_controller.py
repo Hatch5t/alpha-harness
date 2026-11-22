@@ -21,6 +21,8 @@ from alpha_harness.api.deps import install_exception_handlers
 from alpha_harness.brain.schemas import SimulationRequest, SimulationSettings
 from alpha_harness.db.models import (
     ResearchBudget,
+    ResearchCampaign,
+    ResearchCandidate,
     ResearchProfile,
     ResearchReservation,
     SimStatus,
@@ -228,6 +230,35 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(sum(bool(c["evidence"]) for c in report["candidates"]), 0)
         self.assertTrue(
             all(c["evidence"]["reusedWindow"] for c in report["candidates"] if c["evidence"])
+        )
+
+    async def test_missing_evidence_does_not_become_negative_economic_memory(self) -> None:
+        ident = await self.create()
+        await self.finish(ident)
+        async with self.db.session() as session:
+            candidates = list(
+                await session.scalars(
+                    select(ResearchCandidate).where(
+                        ResearchCandidate.campaign_id == ident,
+                        ResearchCandidate.full_trial_id.is_not(None),
+                    )
+                )
+            )
+            for candidate in candidates:
+                candidate.evidence = {
+                    "recommendation": "needs_evidence_or_reject",
+                    "failureClass": "insufficient_evidence",
+                    "reasons": ["Missing recorded platform evidence."],
+                }
+            row = await session.get(ResearchCampaign, ident)
+            row.status, row.cursor = "RUNNING", row.cursor | {"stage": "DECIDE"}
+        await self.service.advance(ident)
+        report = await self.service.report(ident)
+        own = {c["hypothesisId"] for c in report["candidates"] if c["full"]}
+        self.assertTrue(
+            all(
+                h["status"] == "EVIDENCE_INCOMPLETE" for h in report["hypotheses"] if h["id"] in own
+            )
         )
 
     async def test_cancel_has_no_budget_reset_or_implicit_restart(self) -> None:
@@ -633,6 +664,28 @@ class VectorOptionTests(unittest.TestCase):
             {"$a": "v", "$a#vector": "vec_percentage"},
         )
         self.assertEqual(result, "rank(vec_percentage(v, percentage=0.5))")
+
+    def test_cached_baseline_identity_saves_rejection_without_invalid_plan(self) -> None:
+        spec = CampaignSpec(
+            hypothesis="Synthetic duplicate identity test.",
+            validation_start=date(2025, 1, 1),
+            validation_end=date(2025, 12, 31),
+            baseline_ids=["same"],
+        )
+        result = evidence.assess(
+            spec,
+            "same",
+            {},
+            {},
+            [],
+            1,
+            reused_window=False,
+            created_before_validation=False,
+            other_selected=[],
+        )
+        self.assertEqual(result["failureClass"], "duplicate")
+        self.assertFalse(result["submissionReady"])
+        self.assertIn("frozen submitted baseline", result["reasons"][0])
 
     def test_parameter_neighbors_keep_field_identity_and_small_changes(self) -> None:
         self.assertTrue(

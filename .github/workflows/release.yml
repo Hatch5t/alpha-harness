@@ -335,7 +335,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           app=$(find "desktop/src-tauri/target/$TARGET/release/bundle/macos" -maxdepth 1 -name '*.app' -print -quit)
-          codesign -d --entitlements - "$app" > "$RUNNER_TEMP/entitlements.plist"
+          codesign -d --entitlements - --xml "$app" > "$RUNNER_TEMP/entitlements.plist"
           /usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.camera' "$RUNNER_TEMP/entitlements.plist" | grep -qx true
 
       - name: Check native launcher integrity tests

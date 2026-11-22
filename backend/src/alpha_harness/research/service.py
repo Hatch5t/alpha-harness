@@ -525,7 +525,7 @@ class ResearchService:
                     .where(
                         ResearchHypothesis.dataset_id == dataset,
                         ResearchHypothesis.status.in_(
-                            ["FAILED", "PROMISING", "INFRASTRUCTURE_BLOCKED"]
+                            ["FAILED", "PROMISING", "INFRASTRUCTURE_BLOCKED", "EVIDENCE_INCOMPLETE"]
                         ),
                     )
                     .order_by(ResearchHypothesis.id.desc())
@@ -1470,13 +1470,9 @@ class ResearchService:
                 elif candidate.status.endswith("FAILED"):
                     taxonomy["infrastructure_failure"] += 1
                 elif candidate.evidence:
-                    for reason in candidate.evidence.get("reasons", []):
-                        key = (
-                            "excessive_correlation"
-                            if "correlation" in reason.lower()
-                            else "insufficient_robustness"
-                        )
-                        taxonomy[key] += 1
+                    kind = candidate.evidence.get("failureClass")
+                    if kind:
+                        taxonomy[str(kind)] += 1
             for hypothesis in hypotheses:
                 own = by_hypothesis.get(hypothesis.id, [])
                 if any(
@@ -1486,10 +1482,17 @@ class ResearchService:
                     hypothesis.status = "PROMISING"
                 elif any(c.status.endswith("FAILED") for c in own):
                     hypothesis.status = "INFRASTRUCTURE_BLOCKED"
-                elif (own and all(c.status == "REJECTED" for c in own)) or any(
-                    c.evidence for c in own
+                elif any(
+                    c.evidence
+                    and c.evidence.get("failureClass")
+                    in {"weak_performance", "excessive_correlation", "constraint_violation"}
+                    for c in own
                 ):
                     hypothesis.status = "FAILED"
+                elif any(c.evidence for c in own):
+                    hypothesis.status = "EVIDENCE_INCOMPLETE"
+                elif own and all(c.status == "REJECTED" for c in own):
+                    hypothesis.status = "INVALID_IMPLEMENTATION"
             next_cycle = int(row.cursor["cycle"]) + 1
             improved = row.cursor.get("recommended", 0) > row.cursor.get("previous_recommended", -1)
             proceed = (

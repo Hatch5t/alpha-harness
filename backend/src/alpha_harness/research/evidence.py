@@ -156,6 +156,16 @@ def assess(
     sensitivity: list[dict[str, Any]] | None = None,
     field_coverage: dict[str, float | None] | None = None,
 ) -> dict[str, Any]:
+    if alpha_id in spec.baseline_ids:
+        return {
+            "fullEligibilityObserved": False,
+            "synthetic": spec.mode == "offline",
+            "recommendation": "needs_evidence_or_reject",
+            "confidence": "insufficient",
+            "failureClass": "duplicate",
+            "reasons": ["Candidate reuses an alpha in the frozen submitted baseline."],
+            "submissionReady": False,
+        }
     clean = {key: usable(value) for key, value in series.items()}
     plan = ExperimentPlan(
         **ResearchDesign.model_validate(spec).model_dump(), candidate_ids=[alpha_id]
@@ -194,7 +204,7 @@ def assess(
                     "stats": _stats(daily, days, spec.cost_bps),
                 }
             )
-    correlation_rows = []
+    correlation_rows: list[dict[str, Any]] = []
     for baseline in [*spec.baseline_ids, *other_selected]:
         value, count = correlation(daily, clean.get(baseline, {}), spec)
         correlation_rows.append({"alphaId": baseline, "correlation": value, "days": count})
@@ -220,6 +230,23 @@ def assess(
         reasons.append(
             "At least two independently simulated neighboring parameters must pass Quick checks."
         )
+    stats = _stats(daily, validation, spec.cost_bps)
+    measured_failure = bool(stats and stats.get("sharpe") is not None and stats["sharpe"] <= 0)
+    excessive_correlation = any(
+        r["correlation"] is not None and abs(r["correlation"]) > spec.max_discovery_correlation
+        for r in correlation_rows
+    )
+    failure_class = (
+        "weak_performance"
+        if measured_failure
+        else "excessive_correlation"
+        if excessive_correlation
+        else "constraint_violation"
+        if any(value == "FAIL" for value in risk_checks.values())
+        else "insufficient_evidence"
+        if reasons
+        else None
+    )
     unavailable = [
         (
             "Quick parameter sensitivity is preliminary; neighboring Full "
@@ -234,6 +261,7 @@ def assess(
         )
     result |= {
         "fullEligibilityObserved": full_eligible,
+        "failureClass": failure_class,
         "synthetic": spec.mode == "offline",
         "correlations": correlation_rows,
         "regimeWindows": regimes,
