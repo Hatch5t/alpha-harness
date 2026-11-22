@@ -366,6 +366,10 @@ def parameter_neighbor(left: str, right: str) -> bool:
                 first, second = float(x.value), float(y.value)
             except ValueError:
                 return False
+            if not math.isfinite(first) or not math.isfinite(second):
+                return False
+            if first == second:
+                continue
             if abs(first - second) > max(5, abs(first) * 0.5):
                 return False
             changes += 1

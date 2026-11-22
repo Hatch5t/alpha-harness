@@ -710,6 +710,9 @@ class VectorOptionTests(unittest.TestCase):
         self.assertIn("frozen submitted baseline", result["reasons"][0])
 
     def test_parameter_neighbors_keep_field_identity_and_small_changes(self) -> None:
+        self.assertFalse(
+            evidence.parameter_neighbor("rank(ts_delta(a, 10))", "rank(ts_delta(a, 10.0))")
+        )
         self.assertTrue(
             evidence.parameter_neighbor("rank(ts_delta(a, 10))", "rank(ts_delta(a, 12))")
         )
