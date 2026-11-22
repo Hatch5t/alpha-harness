@@ -11,7 +11,6 @@ from alpha_harness.labs.launch import AddedTask
 from alpha_harness.llm.registry import ModelInfo
 
 
-
 class PowerPoolApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_preview_and_created_task_forward_hypothesis_and_budget_estimate(self) -> None:
         model = ModelInfo(id="synthetic", provider="google", rpm=10, rpd=1, reset_timezone="UTC")
