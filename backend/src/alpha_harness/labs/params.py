@@ -111,6 +111,10 @@ class PowerPoolParams(TaskParams):
     hypothesis: str = ""
     #: Optional operator preferences, forwarded only when valid for BRAIN.
     favour_operators: list[str] = Field(default_factory=list)
+    #: An explicitly opted-in small research pilot. Historical tasks remain unchanged.
+    pilot: bool = False
+    pilot_full_cap: int = Field(default=0, ge=0, le=2)
+    pilot_llm_cap: int = Field(default=0, ge=0, le=2)
     #: The last hundred LLM calls, for the task's detail view.
     calls: list[dict[str, Any]] = Field(default_factory=list)
 
