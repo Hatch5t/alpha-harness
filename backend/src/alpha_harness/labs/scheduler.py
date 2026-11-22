@@ -695,12 +695,8 @@ async def resize_task(
         from .pilot import MAX_QUICK
 
         run = params_of(row, PowerPoolParams)
-        if run.pilot and (
-            cores != 1 or (simulations is not None and simulations != MAX_QUICK)
-        ):
-            raise ValueError(
-                "Controlled pilot requires one core and exactly 10 Quick simulations."
-            )
+        if run.pilot and (cores != 1 or (simulations is not None and simulations != MAX_QUICK)):
+            raise ValueError("Controlled pilot requires one core and exactly 10 Quick simulations.")
     async with optimizer.lock(row.id), scheduling:
         if row.status == StudyStatus.RUNNING and cores > before:
             async with optimizer.db.session() as session:
