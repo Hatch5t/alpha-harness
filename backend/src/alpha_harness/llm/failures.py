@@ -17,6 +17,17 @@ _REASONS = {
         "Check provider structured-output support and update the application before retrying.",
         False,
     ),
+    "temperature_rejected": (
+        "Provider rejected the requested temperature.",
+        "Use the model's default sampling in a newly approved attempt; "
+        "the rejected request remains charged.",
+        False,
+    ),
+    "output_limit_rejected": (
+        "Provider rejected the output-token parameter or limit.",
+        "Check this model's token-limit compatibility before approving another attempt.",
+        False,
+    ),
     "authentication": (
         "Provider did not accept the API credentials.",
         "Check the key in LLM Integration. Never paste it into a research report.",
@@ -131,6 +142,10 @@ def classify(exc: Exception) -> Failure:
         and ("too many states" in text or "too complex" in text or "too much branching" in text)
     ):
         return failure("schema_complexity", status)
+    if status == 400 and "temperature" in text:
+        return failure("temperature_rejected", status)
+    if status == 400 and any(word in text for word in ["max_tokens", "max_completion_tokens"]):
+        return failure("output_limit_rejected", status)
     if status == 401 or "api_key_invalid" in text or "unauthenticated" in text:
         return failure("authentication", status)
     if (

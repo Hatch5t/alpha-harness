@@ -6,6 +6,7 @@ Every HTTP request terminates in MockTransport. All data and credentials are syn
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,7 +23,7 @@ from alpha_harness.llm.keys import LLMError
 from alpha_harness.llm.registry import ModelInfo
 from alpha_harness.llm.service import LLMService
 from alpha_harness.research.io import ResearchIO
-from alpha_harness.research.schemas import CampaignSpec, Generated
+from alpha_harness.research.schemas import CampaignSpec, Generated, GeneratedAlpha, Hypothesis
 from alpha_harness.research.service import ResearchError, ResearchService
 from alpha_harness.sealing import Sealer
 
@@ -145,6 +146,9 @@ class GenerationFailureTests(unittest.IsolatedAsyncioTestCase):
         cases = [
             (400, "invalid request", "http_error"),
             (400, "response_format schema unsupported", "request_schema"),
+            (400, "temperature unsupported", "temperature_rejected"),
+            (400, "max_tokens unsupported", "output_limit_rejected"),
+            (400, "max_completion_tokens unsupported", "output_limit_rejected"),
             (401, "unauthenticated", "authentication"),
             (403, "permission denied", "model_access"),
             (404, "model missing", "model_access"),
@@ -274,6 +278,52 @@ class GenerationFailureTests(unittest.IsolatedAsyncioTestCase):
                 Generated.model_validate(invalid)
         # The full schema and prompt contract still carry all bounds.
         self.assertIn('"maxItems": 40', json.dumps(Generated.model_json_schema()))
+
+    async def test_configured_gemini_model_uses_production_generation_path(self) -> None:
+        self.model = replace(self.model, id="gemini-3.5-flash-lite")
+        self.spec = self.spec.model_copy(
+            update={"model": self.model.ref, "max_output_tokens": 4096}
+        )
+        ctx = (await self.service._ios["offline"].contexts(self.spec))[0]
+        generated, _ = await self.service._ios["offline"].generate(self.spec, ctx, "fixture")
+        self.completion(json.dumps(generated.model_dump(mode="json")))
+        parsed, _ = await self.live_io.generate(self.spec, ctx, "Synthetic research prompt")
+        self.assertEqual(parsed, generated)
+        self.assertEqual(len(self.requests), 1)
+        self.assertEqual(self.requests[0]["model"], "gemini-3.5-flash-lite")
+        self.assertEqual(self.requests[0]["max_tokens"], 4096)
+        self.assertNotIn("max_completion_tokens", self.requests[0])
+
+    async def test_schema_properties_and_required_fields_do_not_drift(self) -> None:
+        schema = Generated.provider_schema()
+        for name, model in [
+            (None, Generated),
+            ("Hypothesis", Hypothesis),
+            ("GeneratedAlpha", GeneratedAlpha),
+        ]:
+            node = schema if name is None else schema["$defs"][name]
+            properties = {f.alias or key for key, f in model.model_fields.items()}
+            required = {f.alias or key for key, f in model.model_fields.items() if f.is_required()}
+            self.assertEqual(set(node["properties"]), properties)
+            self.assertEqual(set(node["required"]), required)
+
+    async def test_interrupted_post_generation_cursor_cannot_persist_complete(self) -> None:
+        ident = await self.service.create(self.spec)
+        async with self.db.session() as session:
+            row = await session.get(ResearchCampaign, ident)
+            row.status, row.cursor = "RUNNING", {"stage": "DECIDE", "cycle": 0}
+            session.add(
+                ResearchEvent(
+                    campaign_id=ident,
+                    key="generation:0:lost",
+                    kind="interrupted_generation",
+                    payload={"dataset": "synthetic"},
+                )
+            )
+        await self.service.advance(ident)
+        self.assertEqual((await self.service.get(ident)).status, "FAILED")
+        self.assertEqual((await self.service.report(ident))["status"], "FAILED")
+        self.assertEqual(self.requests, [])
 
     async def test_legacy_complete_projection_preserves_original_records(self) -> None:
         ident = await self.service.create(self.spec)
