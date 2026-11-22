@@ -131,9 +131,7 @@ async def stage_promotions(optimizer: Optimizer, study_id: int) -> int:
                 )
             ).all()
         )
-        existing = [
-            t for t in rows if (t.params or {}).get("fullOf") is not None
-        ]
+        existing = [t for t in rows if (t.params or {}).get("fullOf") is not None]
         remaining = cap - len(existing)
         if remaining <= 0:
             return 0
