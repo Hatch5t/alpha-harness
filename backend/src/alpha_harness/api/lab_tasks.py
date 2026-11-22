@@ -770,9 +770,7 @@ async def change(task_id: int, body: TaskChange, state: State) -> LabTask:
     if row.sampler == POWER_POOL_SAMPLER and params_of(row, PowerPoolParams).pilot:
         from ..labs.pilot import MAX_QUICK
 
-        if cores != 1 or (
-            body.simulations is not None and body.simulations != MAX_QUICK
-        ):
+        if cores != 1 or (body.simulations is not None and body.simulations != MAX_QUICK):
             raise refuse(
                 422,
                 "controlled_pilot_limit",
