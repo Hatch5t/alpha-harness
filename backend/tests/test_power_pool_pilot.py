@@ -160,6 +160,8 @@ class PilotTests(unittest.IsolatedAsyncioTestCase):
             await scheduler.resize_task(self.optimizer, row, 2, 10)
         with self.assertRaises(ValueError):
             await scheduler.resize_task(self.optimizer, row, 1, 11)
+        with self.assertRaises(ValueError):
+            await scheduler.resize_task(self.optimizer, row, 1, 9)
 
     async def test_legacy_power_pool_tasks_still_default_to_unrestricted_mode(self) -> None:
         run = PowerPoolParams(
