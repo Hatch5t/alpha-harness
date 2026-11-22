@@ -42,9 +42,11 @@ def _identity(expression: str) -> str:
 
 
 def _metric(value: object) -> float:
+    if not isinstance(value, int | float | str):
+        return float("nan")
     try:
-        result = float(value) if value is not None else float("nan")
-    except TypeError, ValueError:
+        result = float(value)
+    except ValueError:
         return float("nan")
     return result if math.isfinite(result) else float("nan")
 
