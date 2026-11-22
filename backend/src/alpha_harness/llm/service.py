@@ -301,7 +301,14 @@ class LLMService:
             except Exception as exc:  # noqa: BLE001 — fail closed without logging secrets
                 reason = str(exc).replace(secret, "[redacted]")
                 if sampling is not None and _rejects_temperature(exc):
-                    # The key is fine; the model only wants its own default. Same key again.
+                    # A capped call cannot retry with new parameters after a provider send.
+                    if max_provider_attempts is not None:
+                        raise LLMError(
+                            "The model rejected the requested temperature; a new authorized "
+                            "request with the model default is required.",
+                            provider_status=400,
+                            provider_category="temperature_rejected",
+                        ) from None
                     log.info("llm.temperature_refused", model=model.id)
                     self._default_sampling.add(model.ref)
                     sampling = None
@@ -324,6 +331,12 @@ class LLMService:
                     # retrying into a limit we evidently mis-tracked.
                     await self.ledger.penalise(key_id, model, daily=daily)
                     log.warning("llm.rate_limited", key_id=key_id, model=model.id, daily=daily)
+                    if max_provider_attempts is not None:
+                        raise LLMError(
+                            "The provider rejected this request because of a rate limit.",
+                            provider_status=_status(exc),
+                            provider_category="rate_limited",
+                        ) from None
                     continue
                 # 5xx is the provider's own trouble ("overloaded"): another model may answer.
                 kind = LLMUnavailable if (_status(exc) or 0) >= 500 else LLMError
@@ -336,6 +349,8 @@ class LLMService:
                 )
                 if _refused(exc):
                     log.warning("llm.key_refused", key_id=key_id, model=model.id)
+                    if max_provider_attempts is not None:
+                        raise error from None
                     refusal = error
                     continue
                 raise error from None
