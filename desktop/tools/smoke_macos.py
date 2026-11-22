@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -75,12 +76,19 @@ def main() -> None:
                         assert history == []
                         preferences.update(defaultCores=2, updateCheckHours=0, autoUpdate=False)
                         request("/api/preferences", preferences, "PUT")
-                        saved = json.loads(request("/api/campaign/experiments", {
+                        plan = {
                             "hypothesis": "Synthetic restart smoke test only.",
                             "candidateIds": [], "validationStart": "2025-01-01",
                             "validationEnd": "2025-12-31",
-                        }))
-                        expected = saved["id"]
+                        }
+                        # Empty reports are valid task-review history. The manual freeze
+                        # endpoint correctly requires at least one Vault candidate.
+                        with sqlite3.connect(root / "data/harness.db") as connection:
+                            saved = connection.execute(
+                                "INSERT INTO campaign_experiment (created_at, plan) "
+                                "VALUES (CURRENT_TIMESTAMP, ?)", (json.dumps(plan),),
+                            )
+                            expected = saved.lastrowid
                     else:
                         assert preferences["defaultCores"] == 2
                         assert preferences["updateCheckHours"] == 0
