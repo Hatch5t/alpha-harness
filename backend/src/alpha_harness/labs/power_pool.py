@@ -21,7 +21,7 @@ from ..brain.platform import (
     POWER_POOL_MAX_OPERATORS,
     REGION_AGNOSTIC_REGION,
 )
-from ..brain.schemas import SimulationSettings
+from ..brain.schemas import QUICK_MODE, SimulationSettings
 from ..catalog.queries import CatalogQueries, FieldFilter, Tuple4
 from ..db.models import Study, StudyStatus, Trial, TrialState, utcnow
 from ..llm.keys import BudgetExhaustedError, LLMError, LLMUnavailable
@@ -41,6 +41,7 @@ from .fastexpr import (
 )
 from .objectives import FAILURE
 from .params import PowerPoolParams, params_of
+from .pilot import MAX_LLM, stage_promotions
 from .power_pool_preflight import prefill_calls, repair_temporal_vector, select_pending
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -412,10 +413,16 @@ async def refill(optimizer: Optimizer, row: Study, want: int, waiting: bool) -> 
         llm = run.llm
         calls = int(llm.get("calls") or 0)
         cap = max(3, 2 * -(-row.max_trials // PER_CALL))
+        pilot_spent = int(llm.get("pilotRequestsStarted") or 0)
+        pilot_exhausted = run.pilot and pilot_spent >= min(MAX_LLM, run.pilot_llm_cap)
         stop = (
-            "the last 3 LLM calls wrote no new valid Alpha"
-            if int(llm.get("empty") or 0) >= 3
-            else (f"it reached {cap} LLM calls" if calls >= cap else None)
+            "the controlled pilot used its permitted LLM requests"
+            if pilot_exhausted
+            else (
+                "the last 3 LLM calls wrote no new valid Alpha"
+                if int(llm.get("empty") or 0) >= 3
+                else (f"it reached {cap} LLM calls" if calls >= cap else None)
+            )
         )
         budget_wait = float(llm.get("blockedUntil") or 0) > time.time()
         # Sample at least two different datasets before spending the first ten
@@ -465,6 +472,8 @@ async def refill(optimizer: Optimizer, row: Study, want: int, waiting: bool) -> 
     ):
         _calls[row.id] = spawn(_write(optimizer, row.id), name=f"power-pool-{row.id}")
     elif stop and not busy and not (waiting or sent or left):
+        if run.pilot and not run.stopping and await stage_promotions(optimizer, row.id):
+            return sent
         await scheduler.finish(optimizer, row.id, StudyStatus.COMPLETE, f"Stopped: {stop}.")
     return sent
 
@@ -479,6 +488,30 @@ async def _pause(optimizer: Optimizer, study_id: int, message: str) -> None:
         await scheduler.prune_unsent(optimizer, study_id)
 
 
+async def _reserve_pilot_request(optimizer: Optimizer, study_id: int) -> bool:
+    """Reserve one provider-generation attempt durably before making the request.
+
+    A crash after reservation burns a request slot instead of risking an overrun
+    on restart. The study lock serializes reservations with harvest/scheduling.
+    """
+    async with optimizer.lock(study_id), optimizer.db.session() as session:
+        stored = await session.get(Study, study_id)
+        if stored is None or stored.status != StudyStatus.RUNNING:
+            return False
+        params = params_of(stored, PowerPoolParams)
+        if not params.pilot:
+            return True
+        llm = dict(params.llm)
+        attempts = int(llm.get("pilotRequestsStarted") or 0)
+        if attempts >= min(MAX_LLM, params.pilot_llm_cap):
+            return False
+        llm["pilotRequestsStarted"] = attempts + 1
+        params.llm = llm
+        stored.sampler_params = params.dump()
+        await session.commit()
+        return True
+
+
 async def _write(optimizer: Optimizer, study_id: int) -> None:
     try:
         row = await optimizer.get(study_id)
@@ -486,6 +519,10 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
             return None
         run = params_of(row, PowerPoolParams)
         llm = dict(run.llm)
+        if run.pilot and int(llm.get("pilotRequestsStarted") or 0) >= min(
+            MAX_LLM, run.pilot_llm_cap
+        ):
+            return None
         by = dict(llm.get("byDataset") or {})
         ids = run.dataset_ids
         if not ids:
@@ -496,7 +533,7 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
         # The task's model first; with it out of budget or its provider down, the next one a
         # Key can run, most requests left first, so the run never sits waiting for a reset.
         refs = [run.model]
-        if not run.only_model:
+        if not run.only_model and not run.pilot:
             refs += [str(m["ref"]) for m in await optimizer.llm.runnable()]
         models = [m for ref in dict.fromkeys(refs) if (m := optimizer.llm.registry.get(ref))]
         operators = await optimizer.metadata.cached_operators() or []
@@ -550,6 +587,9 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
                 "model": model.id,
                 "fields": shown,
             }
+            if not await _reserve_pilot_request(optimizer, study_id):
+                # No call leaves this process after the persisted limit is reached.
+                return None
             try:
                 answer = await optimizer.llm.generate(
                     system=POWER_POOL_LAB,
@@ -557,6 +597,7 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
                     model_ref=model.ref,
                     response_schema=SCHEMA,
                     temperature=1.0,
+                    max_provider_attempts=1 if run.pilot else None,
                 )
             except BudgetExhaustedError as exc:
                 spent.append(exc)
@@ -636,6 +677,8 @@ async def _write(optimizer: Optimizer, study_id: int) -> None:
                     if expression in seen:
                         raise Rejected("Already written in this task.")
                     settings = draw(rng, used, ctx, run)
+                    if run.pilot:
+                        settings |= {"simulationMode": QUICK_MODE, "visualization": False}
                     seen.add(expression)
                     valid += 1
                     params = {"dataset": dataset, "model": model.id}

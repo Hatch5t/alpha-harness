@@ -51,6 +51,7 @@ class OpenAICompatible:
         temperature: float | None,
         schema: dict[str, Any] | None,
         reasoning_effort: ReasoningEffort = None,
+        single_attempt: bool = False,
     ) -> tuple[str, dict[str, Any]]:
         """One completion as JSON: its text, and the ``usage`` the provider reported.
 
@@ -58,6 +59,8 @@ class OpenAICompatible:
         every provider honours either, which is why the callers also ask for JSON in the
         prompt itself and parse defensively. A 503 is sent again after a short wait.
         """
+        if single_attempt:
+            return await self._complete(model, system, user, temperature, schema, reasoning_effort)
         for wait in OVERLOADED_WAITS:
             try:
                 return await self._complete(

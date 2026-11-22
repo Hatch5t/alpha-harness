@@ -4,13 +4,14 @@ No provider publishes a remaining-quota endpoint, so the only way to rotate keys
 is to count locally, against the limits the user set up. Two windows, tracked differently
 because they behave differently:
 
-* **Requests per minute** is a sliding sixty-second window, kept in memory: losing it on a
-  restart costs at most one minute of over-caution.
+* **Requests per minute** is a sliding sixty-second window, kept in memory. A restart
+  loses this throttle; daily ceilings and pilot request ceilings remain durable.
 * **Requests per day** is a calendar day and *must* survive a restart, or a spent key looks
   fresh and every rotation walks into a ``429``.
 
-Tokens are recorded for the record, never limited on: no count made here matches the
-provider's own.
+Daily request charges are committed before dispatch, including retries and failed sends.
+Only reported tokens are summed; incomplete usage is explicitly flagged, not zero-filled.
+This request ledger is not a monetary or token spending ceiling.
 
 **The day boundary is the model's own.** Providers do not agree on when a day starts, Google
 at midnight Pacific and OpenRouter at midnight UTC, so each model carries the time zone its
@@ -21,7 +22,7 @@ a limit — because a local refusal can name another key or model, and a ``429``
 """
 
 import time
-from collections import Counter, deque
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta, tzinfo
 from datetime import time as clock  # `time` is already the module, imported above
@@ -29,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.sqlite import insert
 
 from ..db.models import KeyUsage, utcnow
@@ -138,32 +139,34 @@ class Headroom:
         }
 
 
+class ReservationBlocked(RuntimeError):
+    """Another database writer took the headroom after it was read."""
+
+
+@dataclass(frozen=True, slots=True)
+class Reservation:
+    """A request charged before send, on the day it started (even across midnight)."""
+
+    key_id: int
+    day: str
+
+
 class Ledger:
     """Per-key, per-model usage accounting."""
 
     def __init__(self, db: Database) -> None:
         self.db = db
         self._windows: dict[tuple[int, str], Window] = {}
-        #: Daily counts, read through from the database on first use and kept in step
-        #: with it afterwards, so the hot path does not hit SQLite per check.
-        self._daily: dict[tuple[int, str, str], int] = {}
-        #: Requests sent and not yet settled, per (key, model). They count against the day
-        #: until :meth:`record` makes it permanent, or callers at once could overrun a cap.
-        self._in_flight: Counter[tuple[int, str]] = Counter()
 
     def forget(self, key_id: int) -> None:
         """Drop a removed key's counts: SQLite hands its id to the next key added."""
         self._windows = {k: v for k, v in self._windows.items() if k[0] != key_id}
-        self._daily = {k: v for k, v in self._daily.items() if k[0] != key_id}
 
     def _window(self, key_id: int, model: str) -> Window:
         return self._windows.setdefault((key_id, model), Window())
 
     async def _count(self, key_id: int, model_id: str, day: str) -> int:
         """Requests a key has sent a model (or :data:`ALL_MODELS`) on ``day``."""
-        cached = self._daily.get((key_id, model_id, day))
-        if cached is not None:
-            return cached
         async with self.db.session() as session:
             row = await session.scalar(
                 select(KeyUsage).where(
@@ -172,9 +175,7 @@ class Ledger:
                     KeyUsage.day == day,
                 )
             )
-            count = int(row.requests) if row else 0
-        self._daily[(key_id, model_id, day)] = count
-        return count
+            return int(row.requests) if row else 0
 
     async def headroom(self, key_id: int, model: ModelInfo, *, cap: int | None = None) -> Headroom:
         """What is left, and the first limit that would stop the next request.
@@ -186,12 +187,10 @@ class Ledger:
         now = time.monotonic()
         window = self._window(key_id, model.id)
         day = model_day(model)
-        today = await self._count(key_id, model.id, day) + self._in_flight[(key_id, model.id)]
+        today = await self._count(key_id, model.id, day)
         daily = model.rpd
         if cap is not None:
-            spent = await self._count(key_id, ALL_MODELS, day) + sum(
-                n for (key, _), n in self._in_flight.items() if key == key_id
-            )
+            spent = await self._count(key_id, ALL_MODELS, day)
             if cap - spent < daily - today:
                 today, daily = spent, cap
 
@@ -213,25 +212,21 @@ class Ledger:
             state.retry_after = window.next_free(now)
         return state
 
-    def sent(self, key_id: int, model: ModelInfo) -> None:
-        """Count a request against the minute as it leaves, not when it returns: one still
-        in flight already counts at the provider. :meth:`KeyStore.choose` calls it under the
-        lock it reads the budget with. The day counts it too, until :meth:`settled`."""
-        self._window(key_id, model.id).add(time.monotonic())
-        self._in_flight[(key_id, model.id)] += 1
+    async def reserve(
+        self, key_id: int, model: ModelInfo, *, cap: int | None = None
+    ) -> Reservation:
+        """Persist the daily charge before any network operation, under the key lock.
 
-    def settled(self, key_id: int, model: ModelInfo) -> None:
-        """The request :meth:`sent` counted has been answered and recorded, or has failed."""
-        self._in_flight[(key_id, model.id)] = max(0, self._in_flight[(key_id, model.id)] - 1)
-
-    async def record(self, key_id: int, model: ModelInfo, tokens: int) -> None:
-        """Count an answered request against the day, with its tokens.
-
-        Called after the response so the token count is the provider's own, thinking
-        tokens included. The minute already counted it in :meth:`sent`.
+        Failed, cancelled and interrupted requests retain their charge. Tokens are
+        recorded only when a provider reports them; missing usage is not a zero-cost claim.
         """
         day = model_day(model)
-        spent, now_at = max(0, tokens), utcnow()
+        await self._record(key_id, model, day, cap=cap)
+        self._window(key_id, model.id).add(time.monotonic())
+        return Reservation(key_id, day)
+
+    async def _record(self, key_id: int, model: ModelInfo, day: str, *, cap: int | None) -> None:
+        now_at = utcnow()
 
         def bump(model_id: str) -> Any:
             # One atomic statement: calls finishing together otherwise read-then-write the
@@ -243,36 +238,42 @@ class Ledger:
                     model=model_id,
                     day=day,
                     requests=1,
-                    tokens=spent,
+                    tokens=0,
                     last_request_at=now_at,
                 )
                 .on_conflict_do_update(
                     index_elements=["api_key_id", "model", "day"],
                     set_={
                         "requests": KeyUsage.requests + 1,
-                        "tokens": KeyUsage.tokens + spent,
                         "last_request_at": now_at,
                     },
+                    where=KeyUsage.requests < (model.rpd if model_id != ALL_MODELS else cap)
+                    if model_id != ALL_MODELS or cap is not None
+                    else None,
                 )
                 .returning(KeyUsage.requests)
             )
 
         async with self.db.session() as session:
-            counted = {
-                model_id: (await session.execute(bump(model_id))).scalar_one()
-                for model_id in (model.id, ALL_MODELS)
-            }
-        for model_id, requests in counted.items():
-            self._daily[(key_id, model_id, day)] = requests
+            for model_id in (model.id, ALL_MODELS):
+                if (await session.execute(bump(model_id))).scalar_one_or_none() is None:
+                    raise ReservationBlocked("Another caller reserved the last request.")
 
-        # Yesterday's counts are not just stale, they are wrong to serve — drop them. Only
-        # this key's for this model: another provider serving the same id keeps its own clock.
-        for cached in [
-            k
-            for k in self._daily
-            if k[0] == key_id and k[1] in (model.id, ALL_MODELS) and k[2] != day
-        ]:
-            del self._daily[cached]
+    async def record_tokens(self, slot: Reservation, model: ModelInfo, tokens: int) -> None:
+        """Attach observed usage to its reservation without charging a second request."""
+        async with self.db.session() as session:
+            await session.execute(
+                update(KeyUsage)
+                .where(
+                    KeyUsage.api_key_id == slot.key_id,
+                    KeyUsage.model.in_([model.id, ALL_MODELS]),
+                    KeyUsage.day == slot.day,
+                )
+                .values(
+                    tokens=KeyUsage.tokens + max(0, tokens),
+                    reported_requests=KeyUsage.reported_requests + 1,
+                )
+            )
 
     async def penalise(self, key_id: int, model: ModelInfo, *, daily: bool) -> None:
         """Believe the provider over our own arithmetic.
@@ -299,7 +300,6 @@ class Ledger:
                     session.add(row)
                 row.requests = max(row.requests or 0, ceiling)
                 await session.commit()
-                self._daily[(key_id, model.id, day)] = row.requests
             log.warning("llm.budget.daily_exhausted", key_id=key_id, model=model.id)
         else:
             now = time.monotonic()
@@ -339,6 +339,8 @@ class Ledger:
                 "day": r.day,
                 "requests": r.requests,
                 "tokens": r.tokens,
+                "requestsWithReportedUsage": r.reported_requests,
+                "usageIncomplete": r.reported_requests < r.requests,
                 "lastRequestAt": r.last_request_at.isoformat() if r.last_request_at else None,
             }
             for r in rows

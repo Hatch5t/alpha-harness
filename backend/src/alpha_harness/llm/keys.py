@@ -17,7 +17,7 @@ from sqlalchemy import select
 
 from ..db.models import ApiKey, utcnow
 from . import providers
-from .budget import Headroom, Ledger, model_reset
+from .budget import Headroom, Ledger, Reservation, ReservationBlocked, model_reset
 
 if TYPE_CHECKING:
     from ..db.sqlite import Database
@@ -250,7 +250,7 @@ class KeyStore:
 
     # -- rotation --------------------------------------------------------
 
-    async def choose(self, model: ModelInfo, *, skip: set[int]) -> int:
+    async def choose(self, model: ModelInfo, *, skip: set[int]) -> Reservation:
         """Take a request slot on the key with the most daily budget left for this model,
         other than those in ``skip``: the ones this request has already tried.
 
@@ -262,9 +262,15 @@ class KeyStore:
         the database, and two callers reading between them would both take the last slot.
         """
         async with self._choosing:
-            key_id = await self._pick(model, skip)
-            self.ledger.sent(key_id, model)
-            return key_id
+            while True:
+                key_id = await self._pick(model, skip)
+                key = await self.get(key_id)
+                if key is None:
+                    continue
+                try:
+                    return await self.ledger.reserve(key_id, model, cap=key.daily_limit)
+                except ReservationBlocked:
+                    continue
 
     async def _pick(self, model: ModelInfo, skip: set[int]) -> int:
         # Provider first, budget second. A Groq key cannot answer for a Gemini model, so

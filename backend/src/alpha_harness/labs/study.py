@@ -41,7 +41,15 @@ from ..vault.yields import checks_of, clean, gating_results, limits_of, verdict
 from . import objectives as obj
 from . import scheduler
 from .objectives import StudyNotFoundError
-from .params import SEARCH_SAMPLER, TASK_SAMPLERS, TEMPLATE_SAMPLER, SearchParams, params_of
+from .params import (
+    POWER_POOL_SAMPLER,
+    SEARCH_SAMPLER,
+    TASK_SAMPLERS,
+    TEMPLATE_SAMPLER,
+    PowerPoolParams,
+    SearchParams,
+    params_of,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from collections.abc import Awaitable, Callable
@@ -363,9 +371,18 @@ class Optimizer:
 
         # A Quick Alpha that passed every check BRAIN ran is owed a run in Full mode, which is
         # what BRAIN submits. Parked here; the scheduler sends it ahead of the search.
-        owed = [
-            t for _, t, values, summary in finished if values is not None and passed_quick(summary)
-        ]
+        controlled_pilot = (
+            row.sampler == POWER_POOL_SAMPLER and params_of(row, PowerPoolParams).pilot
+        )
+        owed = (
+            []
+            if controlled_pilot
+            else [
+                t
+                for _, t, values, summary in finished
+                if values is not None and passed_quick(summary)
+            ]
+        )
         async with self.db.session() as session:
             if owed:
                 last = await session.scalar(

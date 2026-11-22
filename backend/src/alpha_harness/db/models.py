@@ -196,6 +196,8 @@ class SimulationRecord(Base):
     message: Mapped[str | None] = mapped_column(Text)
     #: Times reconcile queued this row again after its send's answer was lost.
     orphan_requeues: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    #: A hard-capped task never sends an uncertain request a second time.
+    allow_uncertain_retry: Mapped[bool] = mapped_column(default=True, server_default="1")
 
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow, index=True)
     submitted_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
@@ -568,6 +570,7 @@ class KeyUsage(Base):
     day: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD, America/Los_Angeles
     requests: Mapped[int] = mapped_column(Integer, default=0)
     tokens: Mapped[int] = mapped_column(Integer, default=0)
+    reported_requests: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     last_request_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
     __table_args__ = (UniqueConstraint("api_key_id", "model", "day", name="uq_key_model_day"),)

@@ -20,7 +20,7 @@ from contextlib import asynccontextmanager, closing
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from sqlalchemy import Index, Table, event, inspect, text
+from sqlalchemy import Index, Table, event, func, inspect, or_, select, text, update
 from sqlalchemy.dialects import sqlite
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import (
@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.schema import CreateColumn
 
-from .models import Base
+from .models import Base, SimulationRecord, Study, Trial
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -178,6 +178,24 @@ async def migrate(connection: AsyncConnection) -> None:
         added_indexes.extend(
             [index.name or "" for index in table.indexes if await _create_index(connection, index)]
         )
+
+    # Existing opted-in pilot records predate the engine's per-record retry policy.
+    # Preserve their hard cap, including records shared with another task. Once false,
+    # the policy stays on the record even if the original study is later removed.
+    pilots = select(Study.id).where(func.json_extract(Study.sampler_params, "$.pilot") == 1)
+    await connection.execute(
+        update(SimulationRecord)
+        .where(
+            SimulationRecord.allow_uncertain_retry.is_(True),
+            or_(
+                SimulationRecord.task.in_(select(Study.task).where(Study.id.in_(pilots))),
+                SimulationRecord.id.in_(
+                    select(Trial.simulation_record_id).where(Trial.study_id.in_(pilots))
+                ),
+            ),
+        )
+        .values(allow_uncertain_retry=False)
+    )
 
     if added_columns or added_indexes or retired_columns:
         log.info(

@@ -121,6 +121,7 @@ def pack(
     free_slots: int,
     max_batch: int = MULTI_SIMULATION_SIZE,
     task_capacity: dict[str, int] | None = None,
+    strict_tasks: frozenset[str] = frozenset(),
 ) -> list[Batch]:
     """Choose what to submit next.
 
@@ -162,11 +163,17 @@ def pack(
 
     def seat(key: BatchKey, members: list[WorkItem]) -> list[WorkItem]:
         """Fit ``members`` into seats left in batches already opened; return the rest."""
-        for _, open_key, seats in opened:
+        for owner, open_key, seats in opened:
             if open_key == key and members:
                 room = min(max_batch, key.max_batch) - len(seats)
-                seats.extend(members[:room])
-                members = members[room:]
+                eligible = [
+                    item
+                    for item in members
+                    if (item.task not in strict_tasks and owner not in strict_tasks)
+                    or item.task == owner
+                ][:room]
+                seats.extend(eligible)
+                members = [item for item in members if item not in eligible]
         return members
 
     taken = 0
@@ -203,6 +210,7 @@ def allocate_slots(
     quotas: dict[str, int],
     in_flight: dict[str, int] | None = None,
     lend: bool = False,
+    strict_tasks: frozenset[str] = frozenset(),
 ) -> dict[str, int]:
     """Divide free slots between tasks that want them.
 
@@ -239,7 +247,7 @@ def allocate_slots(
         beyond = {
             task: wanted - allocation[task]
             for task, wanted in demand.items()
-            if quotas.get(task, 1) > 0 and wanted > allocation[task]
+            if task not in strict_tasks and quotas.get(task, 1) > 0 and wanted > allocation[task]
         }
         _round_robin(allocation, beyond, free_slots - granted)
 

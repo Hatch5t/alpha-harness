@@ -42,10 +42,13 @@ from ..labs.objectives import FAILURE, OBJECTIVES, StudyNotFoundError
 from ..labs.params import (
     CORRELATION_BREAKER,
     FIELDS_SAMPLER,
+    POWER_POOL_SAMPLER,
     SETTINGS_SAMPLER,
     SUPER_LAB,
     TASK_SAMPLERS,
     TEMPLATE_SAMPLER,
+    PowerPoolParams,
+    params_of,
     task_params,
 )
 from ..labs.study import ranked
@@ -764,6 +767,15 @@ async def change(task_id: int, body: TaskChange, state: State) -> LabTask:
             f"task cannot hold {body.cores} cores.",
         )
     cores = body.cores or scheduler.cores_of(row)
+    if row.sampler == POWER_POOL_SAMPLER and params_of(row, PowerPoolParams).pilot:
+        from ..labs.pilot import MAX_QUICK
+
+        if cores != 1 or (body.simulations is not None and body.simulations != MAX_QUICK):
+            raise refuse(
+                422,
+                "controlled_pilot_limit",
+                "Controlled pilot requires one core and exactly 10 Quick simulations.",
+            )
     free = await scheduler.resize_task(state.optimizer, row, cores, body.simulations)
     if free is not None:
         raise refuse(409, "no_cores", f"Only {free} more cores are free right now.")
