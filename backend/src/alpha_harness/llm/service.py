@@ -206,6 +206,7 @@ class LLMService:
         response_schema: dict[str, Any],
         temperature: float,
         thinking: str | None = None,
+        max_provider_attempts: int | None = None,
     ) -> Answer:
         """Send one prompt, rotating keys by remaining budget. ``model_ref`` names the model
         as :func:`.registry.model_ref` spells it.
@@ -222,8 +223,13 @@ class LLMService:
         # which not all of them honour either; the prompt names the keys it needs.
         schema = response_schema if model.provider == "google" else None
         sampling = None if model.ref in self._default_sampling else temperature
+        provider_attempts = 0
 
         while True:
+            # The controlled pilot forbids retrying a physical request through a
+            # second key, a rejected temperature, or a 503. The SDK uses zero retries.
+            if max_provider_attempts is not None and provider_attempts >= max_provider_attempts:
+                raise LLMUnavailable("Controlled pilot provider request limit reached.")
             try:
                 key_id = await self.keys.choose(model, skip=tried)
             except BudgetExhaustedError as exc:
@@ -241,6 +247,7 @@ class LLMService:
                 client = self._client(model.provider, secret)
 
                 try:
+                    provider_attempts += 1
                     text, usage = await asyncio.wait_for(
                         client.generate(
                             model=model.id,
@@ -249,6 +256,7 @@ class LLMService:
                             temperature=sampling,
                             schema=schema,
                             reasoning_effort=effort,
+                            single_attempt=max_provider_attempts is not None,
                         ),
                         timeout=TIMEOUT_SECONDS,
                     )
