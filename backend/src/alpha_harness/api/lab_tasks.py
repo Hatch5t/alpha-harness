@@ -42,14 +42,14 @@ from ..labs.objectives import FAILURE, OBJECTIVES, StudyNotFoundError
 from ..labs.params import (
     CORRELATION_BREAKER,
     FIELDS_SAMPLER,
+    POWER_POOL_SAMPLER,
     SETTINGS_SAMPLER,
     SUPER_LAB,
-    POWER_POOL_SAMPLER,
     TASK_SAMPLERS,
     TEMPLATE_SAMPLER,
-    task_params,
     PowerPoolParams,
     params_of,
+    task_params,
 )
 from ..labs.study import ranked
 from ..schemas import Out
