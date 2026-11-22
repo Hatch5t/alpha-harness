@@ -52,6 +52,7 @@ class OpenAICompatible:
         schema: dict[str, Any] | None,
         reasoning_effort: ReasoningEffort = None,
         single_attempt: bool = False,
+        max_output_tokens: int | None = None,
     ) -> tuple[str, dict[str, Any]]:
         """One completion as JSON: its text, and the ``usage`` the provider reported.
 
@@ -60,18 +61,22 @@ class OpenAICompatible:
         prompt itself and parse defensively. A 503 is sent again after a short wait.
         """
         if single_attempt:
-            return await self._complete(model, system, user, temperature, schema, reasoning_effort)
+            return await self._complete(
+                model, system, user, temperature, schema, reasoning_effort, max_output_tokens
+            )
         for wait in OVERLOADED_WAITS:
             try:
                 return await self._complete(
-                    model, system, user, temperature, schema, reasoning_effort
+                    model, system, user, temperature, schema, reasoning_effort, max_output_tokens
                 )
             except ProviderError as exc:
                 if exc.status != 503:
                     raise
             log.info("llm.overloaded", model=model, wait=wait)
             await asyncio.sleep(wait)
-        return await self._complete(model, system, user, temperature, schema, reasoning_effort)
+        return await self._complete(
+            model, system, user, temperature, schema, reasoning_effort, max_output_tokens
+        )
 
     async def _complete(
         self,
@@ -81,6 +86,7 @@ class OpenAICompatible:
         temperature: float | None,
         schema: dict[str, Any] | None,
         reasoning_effort: ReasoningEffort,
+        max_output_tokens: int | None = None,
     ) -> tuple[str, dict[str, Any]]:
         messages: list[ChatCompletionMessageParam] = [
             {"role": "system", "content": system},
@@ -98,6 +104,14 @@ class OpenAICompatible:
                 temperature=temperature if temperature is not None else omit,
                 response_format=response_format,
                 reasoning_effort=reasoning_effort if reasoning_effort is not None else omit,
+                max_tokens=max_output_tokens
+                if max_output_tokens is not None
+                and "generativelanguage.googleapis.com" in str(self._sdk.base_url)
+                else omit,
+                max_completion_tokens=max_output_tokens
+                if max_output_tokens is not None
+                and "generativelanguage.googleapis.com" not in str(self._sdk.base_url)
+                else omit,
             )
         except APIStatusError as exc:
             raise ProviderError(exc.status_code, _detail(exc.response)) from exc

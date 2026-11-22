@@ -190,7 +190,9 @@ async def context_for(
     )
 
 
-def check(text: str, ctx: Context, table: dict[str, Any]) -> tuple[str, frozenset[str]]:
+def check(
+    text: str, ctx: Context, table: dict[str, Any], *, enforce_power_pool: bool = True
+) -> tuple[str, frozenset[str]]:
     """The canonical expression and the fields it uses, or :class:`Rejected`."""
     try:
         tree = parse(text)
@@ -198,11 +200,11 @@ def check(text: str, ctx: Context, table: dict[str, Any]) -> tuple[str, frozense
         raise Rejected(f"Could not be read: {exc}") from exc
     if problems := validate(tree, table, set(ctx.names)):
         raise Rejected(problems[0])
-    if (count := operator_count(tree)) > POWER_POOL_MAX_OPERATORS:
+    if enforce_power_pool and (count := operator_count(tree)) > POWER_POOL_MAX_OPERATORS:
         raise Rejected(f"{count} operators; Power Pool allows {POWER_POOL_MAX_OPERATORS}.")
     used = frozenset(n.value for _, n in walk(tree) if n.kind == "name" and n.value in ctx.names)
     data = sorted(used - set(GROUPING_FIELDS))
-    if len(data) > POWER_POOL_MAX_FIELDS:
+    if enforce_power_pool and len(data) > POWER_POOL_MAX_FIELDS:
         raise Rejected(f"{len(data)} data fields ({', '.join(data)}); Power Pool allows 3.")
     if not used & (ctx.own - set(GROUPING_FIELDS)):
         raise Rejected(f"Uses no field of {ctx.id}.")

@@ -20,8 +20,14 @@ const index = createRoute({
   getParentRoute: () => root,
   path: '/',
   beforeLoad: () => {
-    throw redirect({ to: '/dashboard' })
+    throw redirect({ to: '/research' })
   },
+})
+
+const research = createRoute({
+  getParentRoute: () => root,
+  path: '/research',
+  component: lazyRouteComponent(() => import('@/screens/research'), 'ResearchScreen'),
 })
 
 const dashboard = createRoute({
@@ -217,6 +223,7 @@ const pyramids = createRoute({
 
 const routeTree = root.addChildren([
   index,
+  research,
   dashboard,
   matrix,
   data,

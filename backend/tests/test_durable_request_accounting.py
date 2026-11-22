@@ -191,6 +191,19 @@ class DurableRequestTests(unittest.IsolatedAsyncioTestCase):
             }
             self.assertEqual(columns["allow_uncertain_retry"], "'1'")
 
+    async def test_output_limit_is_forwarded_and_unknown_usage_remains_unknown(self) -> None:
+        self.provider.generate.return_value = ("{}", {})
+        answer = await self.call(max_provider_attempts=1, max_output_tokens=256)
+        self.assertEqual(self.provider.generate.call_args.kwargs["max_output_tokens"], 256)
+        self.assertTrue(self.provider.generate.call_args.kwargs["single_attempt"])
+        self.assertFalse(answer.usage_reported)
+
+    async def test_provider_exception_redacts_secret_in_raised_message(self) -> None:
+        self.provider.generate.side_effect = ProviderError(400, "Failed: synthetic-test-key")
+        with self.assertRaises(LLMError) as caught:
+            await self.call(max_provider_attempts=1)
+        self.assertNotIn("synthetic-test-key", str(caught.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

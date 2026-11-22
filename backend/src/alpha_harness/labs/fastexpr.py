@@ -45,6 +45,19 @@ class OperatorInfo:
     #: Each parameter as the definition writes it, e.g. ``("x", "d", "constant = 0")``.
     params: tuple[str, ...] = ()
 
+    @property
+    def explicit(self) -> tuple[tuple[str, str], ...]:
+        """Published defaults that BRAIN requires callers to write by name."""
+        if self.name == "ts_backfill":
+            return ()
+        return tuple(
+            (key.strip(), value.strip())
+            for parameter in self.params
+            if "=" in parameter
+            for key, value in [parameter.split("=", 1)]
+            if key.strip() in {"k", "target_tvr", "percentage"}
+        )
+
 
 _SIGNATURE = re.compile(r"([A-Za-z_]\w*)\s*\(")
 _QUOTES = "\"'“”"
@@ -497,10 +510,18 @@ def validate(
             supplied = count + len(node.kwargs)
             # A required input may be named rather than placed: kth_element(x, 15, k = 1).
             names = [p.split("=")[0].strip() for p in info.params]
+            keywords = [key for key, _ in node.kwargs]
+            if (
+                set(keywords) - set(names)
+                or len(set(keywords)) != len(keywords)
+                or set(names[:count]) & set(keywords)
+            ):
+                problems.append(f"{node.value} has unknown or repeated keyword inputs.")
             given = {*names[:count], *(key for key, _ in node.kwargs)}
             required = [
                 n for p, n in zip(info.params, names, strict=True) if "=" not in p and ".." not in p
             ]
+            required.extend(key for key, _ in info.explicit)
             short = any(n not in given for n in required) if info.params else count < info.required
             if short or (info.maximum is not None and supplied > info.maximum):
                 problems.append(f"{node.value} does not take {supplied} inputs.")

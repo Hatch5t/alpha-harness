@@ -34,6 +34,7 @@ pub const BUILD_VERSION: &str = match option_env!("ALPHA_HARNESS_VERSION") {
     Some(version) => version,
     None => "0.0.0",
 };
+const BUILT_WHEEL_SHA256: Option<&str> = option_env!("ALPHA_HARNESS_WHEEL_SHA256");
 const REPOSITORY: &str = match option_env!("ALPHA_HARNESS_REPOSITORY") {
     Some(repository) => repository,
     None => "residual-lab/alpha-harness",
@@ -369,6 +370,24 @@ fn requested_wheel(version: &str) -> Option<String> {
         .filter(|url| url.starts_with(&release) && !url.contains(".."))
 }
 
+fn checked_digest(value: &str) -> Option<String> {
+    let raw = value.strip_prefix("sha256:").unwrap_or(value);
+    (raw.len() == 64 && raw.bytes().all(|b| b.is_ascii_hexdigit()))
+        .then(|| raw.to_ascii_lowercase())
+}
+
+fn wheel_digest(version: &str) -> Option<String> {
+    if version == BUILD_VERSION {
+        if let Some(value) = BUILT_WHEEL_SHA256 {
+            return checked_digest(value);
+        }
+    }
+    if requested().as_deref() != Some(version) {
+        return None;
+    }
+    text_of(&read_json(&root().join(REQUEST_FILE)), "wheelDigest").and_then(|v| checked_digest(&v))
+}
+
 /// Orders dated releases and their candidates: `2026.10.1rc1 < 2026.10.1rc2 < 2026.10.1 <
 /// 2026.10.1.1`. A candidate is never newer than its release, and the release is newer than it.
 fn release_of(version: &str) -> (Vec<u64>, bool, u64) {
@@ -583,6 +602,13 @@ fn install(uv: &Path, slot: &str, version: &str, wheel: Option<String>) -> Resul
     let wheel = local
         .or(wheel)
         .unwrap_or_else(|| format!("{base}/v{version}/alpha_harness-{version}-py3-none-any.whl"));
+    let expected = wheel_digest(version);
+    if expected.is_none() && !cfg!(debug_assertions) {
+        return Err("release wheel has no verified SHA-256; keep the current installation".into());
+    }
+    let wheel = expected
+        .as_ref()
+        .map_or(wheel.clone(), |digest| format!("{wheel}#sha256={digest}"));
     note(&format!("installing {version} from {wheel}"));
     // The marker goes first: a half-built slot must never read as a working one.
     let _ = fs::remove_file(marker(slot));
@@ -592,18 +618,21 @@ fn install(uv: &Path, slot: &str, version: &str, wheel: Option<String>) -> Resul
     // Constrained to the versions the release was locked against, so a dependency publishing a
     // breaking version cannot break an install that worked yesterday.
     let python = venv_python(slot);
-    run_uv(
-        uv,
-        &[
-            "pip",
-            "install",
-            "--python",
-            &python.to_string_lossy(),
-            "-c",
-            &constraints,
-            &wheel,
-        ],
-    )?;
+    let python_path = python.to_string_lossy();
+    let mut arguments = vec![
+        "pip",
+        "install",
+        "--python",
+        &python_path,
+        "-c",
+        &constraints,
+        &wheel,
+    ];
+    // Dependency hashes come from constraints; the direct wheel has its own URL hash.
+    if expected.is_some() {
+        arguments.push("--require-hashes");
+    }
+    run_uv(uv, &arguments)?;
     let body = json!({"version": version, "served": false});
     write_atomic(&marker(slot), body.to_string())
         .map_err(|e| format!("could not record the install: {e}"))?;
@@ -1099,5 +1128,18 @@ pub fn spawn(app: AppHandle) {
         });
     if let Err(error) = started {
         note(&format!("could not start the supervisor: {error}"));
+    }
+}
+
+#[cfg(test)]
+mod integrity_tests {
+    use super::checked_digest;
+    #[test]
+    fn only_sha256_hex_can_become_a_requirement_hash() {
+        let valid = "a".repeat(64);
+        assert_eq!(checked_digest(&valid), Some(valid.clone()));
+        assert_eq!(checked_digest(&format!("sha256:{valid}")), Some(valid));
+        assert!(checked_digest("sha256:wrong").is_none());
+        assert!(checked_digest(&"g".repeat(64)).is_none());
     }
 }

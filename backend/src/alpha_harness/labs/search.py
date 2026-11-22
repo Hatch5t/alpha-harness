@@ -136,29 +136,37 @@ def families(cat: Catalogue) -> tuple[str, ...]:
 # --- expressions ------------------------------------------------------------
 
 
-def base(field_id: str, vector_op: str | None = None) -> str:
+def base(field_id: str, vector_op: str | None = None, options: str | None = None) -> str:
     """A field as every shape reads it: reduced to a matrix if it is a vector, then backfilled."""
-    inner = f"{vector_op}({field_id})" if vector_op else field_id
+    written = f", {options}" if options else ""
+    inner = f"{vector_op}({field_id}{written})" if vector_op else field_id
     return f"ts_backfill({inner}, {BACKFILL})"
 
 
-def render(params: dict[str, Any]) -> str:
-    """The Fast Expression for one point of the search."""
-    b = base(params["field"], params.get("vector_op"))
+def render(params: dict[str, Any], keywords: dict[str, str] | None = None) -> str:
+    """The Fast Expression for one point, including account-required options."""
+    written = keywords or {}
+    vector_op = params.get("vector_op")
+    b = base(params["field"], vector_op, written.get(vector_op) if vector_op else None)
+
+    def call(op: str, *args: object) -> str:
+        options = written.get(op)
+        inputs = ", ".join(str(a) for a in args)
+        return f"{op}({inputs}{', ' + options if options else ''})"
+
     match params["family"]:
         case "cs":
-            return f"{params['cs']}({b})"
+            return call(params["cs"], b)
         case "ts":
-            return f"{params['ts']}({b}, {params['d']})"
+            return call(params["ts"], b, params["d"])
         case "group":
-            return f"{params['group_op']}({b}, {params['group']})"
+            return call(params["group_op"], b, params["group"])
         case "cs_ts":
-            return f"{params['cs']}({params['ts']}({b}, {params['d']}))"
+            return call(params["cs"], call(params["ts"], b, params["d"]))
         case "ts_ts":
-            inner = f"{params['ts']}({b}, {params['d']})"
-            return f"{params['ts_outer']}({inner}, {params['d_outer']})"
+            return call(params["ts_outer"], call(params["ts"], b, params["d"]), params["d_outer"])
         case "group_ts":
-            return f"{params['group_op']}({params['ts']}({b}, {params['d']}), {params['group']})"
+            return call(params["group_op"], call(params["ts"], b, params["d"]), params["group"])
         case _:
             raise ValueError(f"Unknown shape {params['family']!r}")
 
@@ -260,7 +268,7 @@ def request_for(params: dict[str, Any], run: SearchParams) -> SimulationRequest:
             decay=run.decay,
             truncation=TRUNCATION,
         ),
-        regular=render(params),
+        regular=render(params, run.space.get("keywords")),
     )
 
 

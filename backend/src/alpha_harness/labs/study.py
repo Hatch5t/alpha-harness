@@ -148,7 +148,9 @@ class Optimizer:
             ids = list(
                 (
                     await session.scalars(
-                        select(Study.id).where(Study.status == StudyStatus.RUNNING)
+                        select(Study.id).where(
+                            Study.status == StudyStatus.RUNNING, Study.sampler.in_(TASK_SAMPLERS)
+                        )
                     )
                 ).all()
             )
@@ -209,6 +211,13 @@ class Optimizer:
         if told or asked:
             await self.notify()
         return {"told": told, "asked": asked}
+
+    async def harvest_research(self, study_id: int) -> int:
+        """Harvest controller-owned trials without advancing a legacy sampler."""
+        row = await self.get(study_id)
+        if row is None or row.sampler != "research-campaign":
+            raise ValueError("Research harvesting requires a controller-owned study.")
+        return await self._harvest(study_id, tell=False)
 
     async def _harvest(self, study_id: int, *, tell: bool) -> int:
         """Score every trial whose simulation reached a terminal state.
@@ -371,7 +380,7 @@ class Optimizer:
 
         # A Quick Alpha that passed every check BRAIN ran is owed a run in Full mode, which is
         # what BRAIN submits. Parked here; the scheduler sends it ahead of the search.
-        controlled_pilot = (
+        controlled_pilot = row.sampler == "research-campaign" or (
             row.sampler == POWER_POOL_SAMPLER and params_of(row, PowerPoolParams).pilot
         )
         owed = (

@@ -25,7 +25,7 @@ name: release
 on:
   push:
     tags: ["v*"]
-    branches: ["codex/macos-research-build", "codex/grandmaster-preflight-v1", "codex/durable-quick-full-pilot-v1"]
+    branches: ["codex/macos-research-build", "codex/grandmaster-preflight-v1", "codex/durable-quick-full-pilot-v1", "codex/autonomous-research-v1"]
   workflow_dispatch:
     inputs:
       version:
@@ -44,6 +44,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
+      wheel-sha256: ${{ steps.hash.outputs.wheel-sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -74,7 +75,7 @@ jobs:
         id: version
         shell: bash
         env:
-          REF: ${{ inputs.version || (github.ref_type == 'tag' && github.ref_name) || (github.ref_name == 'codex/durable-quick-full-pilot-v1' && '2026.11.22rc4') || '2026.11.22rc3' }}
+          REF: ${{ inputs.version || (github.ref_type == 'tag' && github.ref_name) || ((github.ref_name == 'codex/durable-quick-full-pilot-v1' || github.ref_name == 'codex/autonomous-research-v1') && '2026.11.22rc4') || '2026.11.22rc3' }}
         run: |
           uv run --with packaging --no-project --quiet python - <<'PY'
           import os, pathlib
@@ -118,6 +119,12 @@ jobs:
         run: cd backend && uv version --frozen "$VERSION"
 
       - run: cd backend && uv build --wheel
+      - name: Hash the release wheel
+        id: hash
+        run: |
+          set -- backend/dist/*.whl
+          [ "$#" -eq 1 ] || exit 1
+          echo "wheel-sha256=$(sha256sum "$1" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       # With hashes: the launcher installs every dependency through this file, and uv refuses
       # an artefact whose hash does not match one listed here. The project's own wheel is not
       # in it (`--no-emit-project`) and stays unhashed, so this covers the PyPI leg only.
@@ -180,6 +187,7 @@ jobs:
       # tells the app it is.
       ALPHA_HARNESS_VERSION: ${{ needs.wheel.outputs.version }}
       ALPHA_HARNESS_REPOSITORY: ${{ github.repository }}
+      ALPHA_HARNESS_WHEEL_SHA256: ${{ needs.wheel.outputs.wheel-sha256 }}
       # The oldest macOS the build may need: see Build, and the check after it.
       MACOS_FLOOR: ${{ matrix.macos }}
       TARGET: ${{ matrix.target }}
@@ -322,6 +330,17 @@ jobs:
               print(f"::error::{name} needs macOS {major}.{minor}; the floor is {FLOOR[0]}.{FLOOR[1]}")
           sys.exit(1 if too_new else 0)
           PY
+
+      - name: Verify macOS camera entitlement
+        if: runner.os == 'macOS'
+        run: |
+          app=$(find "desktop/src-tauri/target/$TARGET/release/bundle/macos" -maxdepth 1 -name '*.app' -print -quit)
+          codesign -d --entitlements - "$app" > "$RUNNER_TEMP/entitlements.plist"
+          /usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.camera' "$RUNNER_TEMP/entitlements.plist" | grep -qx true
+
+      - name: Check native launcher integrity tests
+        if: matrix.target == 'aarch64-apple-darwin'
+        run: cargo test --manifest-path desktop/src-tauri/Cargo.toml --locked --release --target "$TARGET" -- integrity_tests
 
       - name: Fetch wheel for native startup verification
         if: matrix.target == 'aarch64-apple-darwin'

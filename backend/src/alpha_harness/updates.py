@@ -21,6 +21,7 @@ import json
 import os
 import platform
 import random
+import re
 import sys
 import time
 from dataclasses import asdict, dataclass
@@ -124,6 +125,7 @@ class Release:
     #: The wheel's own download URL, read from the release rather than built from the version.
     #: A constructed name breaks the moment a build tags it anything but ``py3-none-any``.
     wheel_url: str | None = None
+    wheel_digest: str | None = None
 
 
 #: Serialises the look at GitHub, so concurrent callers make one call between them.
@@ -335,6 +337,7 @@ def _read(body: Any) -> Release | None:
         if isinstance(body.get("published_at"), str)
         else None,
         wheel_url=_wheel_of(body.get("assets")),
+        wheel_digest=_digest_of(body.get("assets")),
     )
 
 
@@ -358,7 +361,19 @@ def _wheel_of(assets: Any) -> str | None:
     return None
 
 
-def request(version: str, *, wheel_url: str | None = None) -> Path:
+def _digest_of(assets: Any) -> str | None:
+    """Only the selected wheel's GitHub SHA-256 is a valid update digest."""
+    selected = _wheel_of(assets)
+    if isinstance(assets, list) and selected:
+        for asset in assets:
+            if isinstance(asset, dict) and asset.get("browser_download_url") == selected:
+                digest = asset.get("digest")
+                if isinstance(digest, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+                    return digest
+    return None
+
+
+def request(version: str, *, wheel_url: str | None = None, wheel_digest: str | None = None) -> Path:
     """Record the version the launcher should install, and return the file it wrote.
 
     Raises :class:`RuntimeError` when nothing is supervising this process, because writing a
@@ -380,6 +395,7 @@ def request(version: str, *, wheel_url: str | None = None) -> Path:
             {
                 "version": version,
                 "wheelUrl": wheel_url,
+                "wheelDigest": wheel_digest,
                 "requestedAt": time.time(),
                 "from": current(),
             }

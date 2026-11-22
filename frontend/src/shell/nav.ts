@@ -51,6 +51,7 @@ export const TOOL_TABS = [
 /** `group` heads a run of items in the sidebar; empty sits above every heading. An item's
  *  area is its path, `to` without the slash. */
 export const NAV = [
+  { to: '/research', group: '', label: 'Research Campaigns', icon: FlaskConicalIcon },
   {
     to: '/dashboard',
     group: '',

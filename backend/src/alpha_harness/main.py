@@ -40,6 +40,7 @@ from .api import (
     power_pool_lab,
     preferences,
     quarter,
+    research,
     search_lab,
     sims,
     super_lab,
@@ -170,6 +171,7 @@ def create_app() -> FastAPI:
     install_exception_handlers(app)
 
     app.include_router(auth.router)
+    app.include_router(research.router)
     app.include_router(catalog.router)
     # Campaign preview has its own API and frontend contract.
     app.include_router(campaign.router, include_in_schema=False)

@@ -10,6 +10,7 @@ from fastapi import APIRouter
 
 from ..db.models import utcnow
 from ..labs import search
+from ..labs.fastexpr import operator_table
 from ..labs.launch import (
     NO_SIMULATIONS,
     AddedTask,
@@ -66,6 +67,11 @@ async def _plan(body: SearchRequest, state: Any) -> dict[str, Any]:
         problems.append("None of your operators fit a search shape.")
 
     space = {
+        "keywords": {
+            name: ", ".join(f"{k}={v}" for k, v in info.explicit)
+            for name, info in operator_table(market["operators"]).items()
+            if info.explicit
+        },
         "fields": pool.fields,
         "families": list(shapes),
         "cs": list(cat.cs),
