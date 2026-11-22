@@ -143,9 +143,7 @@ class PilotTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(accepted, [True, True, False])
         async with self.db.session() as session:
             row = await session.get(Study, self.study_id)
-            self.assertEqual(
-                params_of(row, PowerPoolParams).llm["pilotRequestsStarted"], MAX_LLM
-            )
+            self.assertEqual(params_of(row, PowerPoolParams).llm["pilotRequestsStarted"], MAX_LLM)
             row.status = StudyStatus.PAUSED
         self.assertFalse(await power_pool._reserve_pilot_request(self.optimizer, self.study_id))
         await self.restart()
